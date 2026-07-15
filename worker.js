@@ -50,7 +50,7 @@ export default {
       new Response(JSON.stringify(obj), { status, headers: { ...cors, 'Content-Type': 'application/json' } });
 
     if (request.method === 'OPTIONS') return new Response(null, { status: 204, headers: cors });
-    if (request.method === 'GET') return json({ ok: true, service: 'inventory-count-api', build: 'v3' }, 200);
+    if (request.method === 'GET') return json({ ok: true, service: 'inventory-count-api', build: 'v4' }, 200);
     if (request.method !== 'POST') return json({ ok: false, error: 'Method not allowed' }, 405);
 
     let payload;
@@ -129,7 +129,7 @@ async function appendEntry(sheets, e, dept) {
     row = [e.ts, e.counter, e.code, e.desc, e.type, e.per, e.full, e.extra, e.loc, e.total];
   } else if (e.category === 'Cans') {
     tab = TAB.cansOut;
-    header = ['Timestamp', 'Counter', 'Label Number', 'Description', 'Per Unit', 'Full', 'Extra', 'Location', 'Total'];
+    header = ['Timestamp', 'Counter', 'Code', 'Description', 'Per Unit', 'Full', 'Extra', 'Location', 'Total'];
     row = [e.ts, e.counter, e.code, e.desc, e.per, e.full, e.extra, e.loc, e.total];
   } else {
     tab = TAB.endsOut;

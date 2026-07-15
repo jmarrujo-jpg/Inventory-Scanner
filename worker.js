@@ -8,13 +8,17 @@
  * or deploy with wrangler. Set these variables (Settings > Variables and Secrets):
  *   GCP_SA_EMAIL        (secret)  service account email  (client_email in the key JSON)
  *   GCP_SA_PRIVATE_KEY  (secret)  the private_key from the key JSON (PEM; literal \n is fine)
- *   SHEET_ID            (var)     spreadsheet id (REQUIRED — the Inventory workbook)
+ *   SHEET_ID            (var)     spreadsheet id (optional; defaults to the Inventory workbook)
  *   ALLOWED_ORIGIN      (var)     e.g. https://jmarrujo-jpg.github.io  (optional; default *)
  *   API_TOKEN           (secret)  optional shared token; if set, the client must send it
  *
  * Reads AND writes are live: getLookups() serves the three lookup tabs, appendEntry() writes a
  * counted row to the Metals / Plastics tabs — the same contract the Apps Script backend used.
  */
+
+// Inventory workbook id — used when the SHEET_ID variable isn't set. Override it by setting a
+// SHEET_ID variable on the Worker if the workbook ever changes.
+const DEFAULT_SHEET_ID = '1GNw1gAnB1jI9L6PdUoUeQAlOKCHlPJ1f0-kxcQroI9U';
 
 // ---- Tab names (change here if you rename tabs) ----
 const TAB = {
@@ -170,8 +174,7 @@ async function getToken(env) {
 }
 async function makeSheets(env) {
   const token = await getToken(env);
-  const id = env.SHEET_ID;
-  if (!id) throw new Error('SHEET_ID is not set (the Inventory workbook spreadsheet id).');
+  const id = env.SHEET_ID || DEFAULT_SHEET_ID;
   const base = 'https://sheets.googleapis.com/v4/spreadsheets/' + id;
   const auth = { Authorization: 'Bearer ' + token };
   async function call(url, opts) {

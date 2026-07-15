@@ -35,7 +35,8 @@ Browser (github.io page)  ──fetch {fn,args}──▶  Cloudflare Worker  ─
    - `GCP_SA_EMAIL` (Secret) = the service account email.
    - `GCP_SA_PRIVATE_KEY` (Secret) = the `private_key` value from the key JSON (paste verbatim;
      the `\n`s are fine).
-   - `SHEET_ID` (Variable, **required**) = the spreadsheet id from Step 1.
+   - `SHEET_ID` (Variable, optional) — the Inventory workbook id is baked into `worker.js` as
+     the default, so you only need this if the workbook ever changes.
    - `ALLOWED_ORIGIN` (optional) = `https://<youruser>.github.io` to lock CORS to your page.
    - `API_TOKEN` (optional Secret) = a long random string, if you want a shared-token gate.
    - Deploy again after adding variables.
@@ -65,7 +66,6 @@ Commit. (Or paste me the Worker URL and I'll set it and push.)
 ## Troubleshooting
 - App shows **"Service account not configured"** → the Worker secrets didn't save, or you didn't
   redeploy after adding them.
-- **"SHEET_ID is not set"** → add the `SHEET_ID` variable and redeploy.
 - **"Sheets API 403"** → the sheet isn't shared with the service account email, or the Sheets API
   isn't enabled on its project.
 - **"Sheets API 400 … Unable to parse range"** → a tab name doesn't match. The Worker expects

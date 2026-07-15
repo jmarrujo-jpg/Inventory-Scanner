@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-<title>Inventory Count</title>
+<title>Container Supply Inventory Count</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Archivo:wght@500;600;700;800;900&family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@500;600;700&display=swap" rel="stylesheet">
@@ -186,7 +186,7 @@ input,select{font-family:inherit;font-size:16px}
   <section id="landing">
     <div class="brand">
       <div class="dot"></div>
-      <h1>Inventory Count</h1>
+      <h1>Container Supply Inventory Count</h1>
     </div>
     <p class="tagline">Pick a department to start counting.</p>
     <div class="choose">
@@ -266,7 +266,7 @@ var API_SECRET = '';
 
 /* Bump this on every page change — the number shows in the bottom-right corner so you can
    confirm a reload actually picked up the latest page (an old cached page has no tag). */
-var APP_VERSION = 'v4';
+var APP_VERSION = 'v5';
 
 /* Call a backend function: callApi('fn', [arg1, arg2]) -> Promise(result). */
 function callApi(fn, args){
@@ -315,11 +315,9 @@ function loadSession(){
 }
 function restoreSession(s){
   if(!s) return;
+  // Always start on the landing screen; just restore the counter name. Entries stay loaded in
+  // state, so tapping a section shows the counts you'd already saved this session.
   if($('counterName') && typeof s.counter==='string') $('counterName').value = s.counter;
-  if(s.lastDept==='metals' || s.lastDept==='plastics'){
-    openDept(s.lastDept);
-    if(s.lastDept==='metals' && s.metalKind) setMetalKind(s.metalKind);
-  }
 }
 
 const $ = id => document.getElementById(id);

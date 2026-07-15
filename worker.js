@@ -50,7 +50,7 @@ export default {
       new Response(JSON.stringify(obj), { status, headers: { ...cors, 'Content-Type': 'application/json' } });
 
     if (request.method === 'OPTIONS') return new Response(null, { status: 204, headers: cors });
-    if (request.method === 'GET') return json({ ok: true, service: 'inventory-count-api', build: 'v4' }, 200);
+    if (request.method === 'GET') return json({ ok: true, service: 'inventory-count-api', build: 'v5' }, 200);
     if (request.method !== 'POST') return json({ ok: false, error: 'Method not allowed' }, 405);
 
     let payload;
@@ -76,6 +76,7 @@ async function handle(fn, args, env) {
   switch (fn) {
     case 'getLookups': return getLookups(sheets);
     case 'appendEntry': return appendEntry(sheets, args[0], args[1]);
+    case 'getEntries': return getEntries(sheets);
     default:
       throw new Error('Unknown function: ' + fn);
   }
@@ -138,6 +139,53 @@ async function appendEntry(sheets, e, dept) {
   }
   await sheets.appendEnsuring(tab, row, header);
   return true;
+}
+
+// Read back everything currently in the output tabs so the app can show the full count list
+// (the Sheet is the source of truth — survives phone crashes / different devices).
+async function getEntries(sheets) {
+  const [cans, ends, plastics] = await Promise.all([
+    readTabEntries(sheets, TAB.cansOut, 'Cans'),
+    readTabEntries(sheets, TAB.endsOut, 'Ends'),
+    readTabEntries(sheets, TAB.plasticsOut, 'Plastics'),
+  ]);
+  return { cans, ends, plastics };
+}
+function numOr0(v) { const n = Number(v); return isNaN(n) ? 0 : n; }
+async function readTabEntries(sheets, tab, category) {
+  let values;
+  try {
+    values = await sheets.readAll(tab);
+  } catch (e) {
+    if (String((e && e.message) || '').indexOf('Unable to parse range') !== -1) return []; // tab not created yet
+    throw e;
+  }
+  if (!values.length) return [];
+  const headers = values[0].map((h) => String(h).trim());
+  const at = (name) => headers.indexOf(name);
+  // code column has a different header per tab
+  const iCode = [ 'Code', 'Label Code', 'Label Number', 'Item #' ].map(at).find((i) => i !== -1);
+  const cell = (r, name) => { const i = at(name); return (i === -1 || r[i] === undefined || r[i] === null) ? '' : r[i]; };
+  const out = [];
+  for (let n = 1; n < values.length; n++) {
+    const r = values[n] || [];
+    if (!r.some((c) => c !== '' && c !== null && c !== undefined)) continue; // skip blank rows
+    out.push({
+      ts: String(cell(r, 'Timestamp') || ''),
+      counter: String(cell(r, 'Counter') || ''),
+      category,
+      code: String((iCode !== undefined && r[iCode] != null) ? r[iCode] : ''),
+      desc: String(cell(r, 'Description') || ''),
+      weight: String(cell(r, 'Weight') || ''),
+      type: String(cell(r, 'Type') || ''),
+      per: numOr0(cell(r, 'Per Unit')),
+      full: numOr0(cell(r, 'Full')),
+      extra: numOr0(cell(r, 'Extra')),
+      total: numOr0(cell(r, 'Total')),
+      loc: String(cell(r, 'Location') || ''),
+    });
+  }
+  return out;
 }
 
 // ---------------- Google auth + Sheets ----------------
@@ -203,8 +251,14 @@ async function makeSheets(env) {
       return values.slice(1); // drop the header row
     },
     async append(tab, row) {
-      return call(base + '/values/' + encodeURIComponent(tab) + ':append?valueInputOption=USER_ENTERED&insertDataOption=INSERT_ROWS',
+      return call(base + '/values/' + encodeURIComponent(tab) + ':append?valueInputOption=RAW&insertDataOption=INSERT_ROWS',
         { method: 'POST', headers: { ...auth, 'Content-Type': 'application/json' }, body: JSON.stringify({ values: [row] }) });
+    },
+    // Read every value in a tab (including the header row).
+    async readAll(tab) {
+      const j = await call(base + '/values/' + encodeURIComponent(tab)
+        + '?valueRenderOption=UNFORMATTED_VALUE&dateTimeRenderOption=FORMATTED_STRING', { headers: auth });
+      return j.values || [];
     },
     // Create a tab (with a header row) if it doesn't already exist.
     async ensureTab(title, header) {

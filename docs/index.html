@@ -246,7 +246,7 @@ input,select{font-family:inherit;font-size:16px}
       <div id="cardMount"></div>
 
       <div class="recent">
-        <h3>This session <span class="acts"><span class="exp linkbtn hide" id="clearBtn" onclick="clearSession()">Clear</span><span class="exp linkbtn hide" id="exportBtn" onclick="exportCSV()">Download CSV</span></span></h3>
+        <h3>Counted so far <span class="acts"><span class="exp linkbtn" id="refreshBtn" onclick="refreshEntries()">Refresh</span><span class="exp linkbtn hide" id="exportBtn" onclick="exportCSV()">Download CSV</span></span></h3>
         <div id="recentList"><div class="empty-recent">Scanned items will appear here after you save them.</div></div>
       </div>
     </div>
@@ -266,7 +266,7 @@ var API_SECRET = '';
 
 /* Bump this on every page change — the number shows in the bottom-right corner so you can
    confirm a reload actually picked up the latest page (an old cached page has no tag). */
-var APP_VERSION = 'v6';
+var APP_VERSION = 'v7';
 
 /* Call a backend function: callApi('fn', [arg1, arg2]) -> Promise(result). */
 function callApi(fn, args){
@@ -368,6 +368,7 @@ function openDept(dept){
   $('landing').style.display='none';
   $('count').style.display='flex';
   clearCard(); renderRecent(); updateHints();
+  refreshEntries();   // pull the authoritative list from the sheet
   focusScan();
 }
 function goHome(){
@@ -542,12 +543,34 @@ function saveEntry(){
     });
 }
 
+/* ---- load the counted list from the sheet (the source of truth) ---- */
+var _refreshing=false;
+function refreshEntries(){
+  if(_refreshing) return Promise.resolve();
+  _refreshing=true;
+  const rb=$('refreshBtn'); if(rb) rb.textContent='Refreshing…';
+  return callApi('getEntries', []).then(function(res){
+    const rev = a => Array.isArray(a) ? a.slice().reverse() : [];   // sheet is oldest-first → newest-first
+    const cans=rev(res.cans), ends=rev(res.ends);
+    state.entries.plastics = rev(res.plastics);
+    state.entries.metals   = cans.concat(ends).sort((a,b)=> a.ts<b.ts?1:(a.ts>b.ts?-1:0));
+    persistSession();                 // keep a local cache for offline / crash fallback
+    if(state.dept) renderRecent();
+  }).catch(function(err){
+    console.error(err);
+    if(state.dept) renderRecent();    // fall back to the cached list
+    toast('Couldn’t reach the sheet — showing cached list','err');
+  }).finally(function(){
+    _refreshing=false;
+    const b=$('refreshBtn'); if(b) b.textContent='Refresh';
+  });
+}
+
 /* ---- recent list + export ---- */
 function renderRecent(){
   const list=activeEntries();
   $('sessCount').textContent=list.length;
   $('exportBtn').classList.toggle('hide', list.length===0);
-  $('clearBtn').classList.toggle('hide', list.length===0);
   const el=$('recentList');
   if(!list.length){ el.innerHTML='<div class="empty-recent">Scanned items will appear here after you save them.</div>'; return; }
   el.innerHTML=list.map(e=>`<div class="entry">

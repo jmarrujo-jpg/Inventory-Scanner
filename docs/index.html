@@ -164,6 +164,10 @@ input,select{font-family:inherit;font-size:16px}
 .notfound{background:#FFF4F1;border:1px solid #F3C6BC;color:#8a2d1c;border-radius:12px;padding:14px 16px;font-size:14px;display:flex;gap:10px;align-items:flex-start}
 .notfound b{color:var(--danger)}
 
+/* build/version tag */
+.buildtag{position:fixed;right:8px;bottom:6px;z-index:60;font-family:'JetBrains Mono',ui-monospace,monospace;
+  font-size:10px;font-weight:600;letter-spacing:.06em;color:var(--ink-soft);opacity:.55;pointer-events:none}
+
 @media (min-width:560px){ .dept-card .sub{max-width:60%} }
 </style>
 </head>
@@ -242,6 +246,7 @@ input,select{font-family:inherit;font-size:16px}
 
 </div>
 <div id="toast"></div>
+<div class="buildtag" id="buildTag"></div>
 
 <script>
 /* ====== Backend config ======
@@ -250,6 +255,10 @@ input,select{font-family:inherit;font-size:16px}
    API_TOKEN on the Worker. */
 var API_URL = 'https://inventory-scanner.jmarrujo.workers.dev';
 var API_SECRET = '';
+
+/* Bump this on every page change — the number shows in the bottom-right corner so you can
+   confirm a reload actually picked up the latest page (an old cached page has no tag). */
+var APP_VERSION = 'v3';
 
 /* Call a backend function: callApi('fn', [arg1, arg2]) -> Promise(result). */
 function callApi(fn, args){
@@ -523,6 +532,9 @@ function toast(msg,type){
   const t=$('toast'); t.textContent=msg; t.className='show'+(type==='err'?' err':'');
   clearTimeout(toastT); toastT=setTimeout(()=>t.className='',1800);
 }
+
+/* show the build/version tag */
+$('buildTag').textContent = APP_VERSION;
 </script>
 </body>
 </html>

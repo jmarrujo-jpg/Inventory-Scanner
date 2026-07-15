@@ -21,11 +21,13 @@
 const DEFAULT_SHEET_ID = '1GNw1gAnB1jI9L6PdUoUeQAlOKCHlPJ1f0-kxcQroI9U';
 
 // ---- Tab names (change here if you rename tabs) ----
+// Output tabs are split: Cans and Ends each get their own tab (auto-created if missing).
 const TAB = {
   ends: 'Ends_Lookup',
   cans: 'Cans_Lookup',
   plastics: 'Plastics_Lookup',
-  metalsOut: 'Metals',
+  cansOut: 'Cans',
+  endsOut: 'Ends',
   plasticsOut: 'Plastics',
 };
 
@@ -48,7 +50,7 @@ export default {
       new Response(JSON.stringify(obj), { status, headers: { ...cors, 'Content-Type': 'application/json' } });
 
     if (request.method === 'OPTIONS') return new Response(null, { status: 204, headers: cors });
-    if (request.method === 'GET') return json({ ok: true, service: 'inventory-count-api', build: 'v1' }, 200);
+    if (request.method === 'GET') return json({ ok: true, service: 'inventory-count-api', build: 'v2' }, 200);
     if (request.method !== 'POST') return json({ ok: false, error: 'Method not allowed' }, 405);
 
     let payload;
@@ -111,23 +113,29 @@ async function getLookups(sheets) {
 }
 
 /**
- * Append one counted entry. dept = 'metals' or 'plastics'.
+ * Append one counted entry. dept = 'metals' or 'plastics'; for metals, e.category is
+ * 'Cans' or 'Ends' and picks the tab. Cans and Ends write to their own tabs, which are
+ * created (with a header row) on first use if they don't exist yet.
  * The Sheets values:append (INSERT_ROWS) is atomic server-side, so concurrent counters
  * appending at once each get their own new row — no LockService needed.
  */
 async function appendEntry(sheets, e, dept) {
   e = e || {};
-  let tab, row;
+  let tab, row, header;
   if (dept === 'plastics') {
     tab = TAB.plasticsOut;
-    // Timestamp | Counter | Item # | Description | Type | Per Unit | Full | Extra | Total | Location
+    header = ['Timestamp', 'Counter', 'Item #', 'Description', 'Type', 'Per Unit', 'Full', 'Extra', 'Total', 'Location'];
     row = [e.ts, e.counter, e.code, e.desc, e.type, e.per, e.full, e.extra, e.total, e.loc];
+  } else if (e.category === 'Cans') {
+    tab = TAB.cansOut;
+    header = ['Timestamp', 'Counter', 'Label Number', 'Description', 'Per Unit', 'Full', 'Extra', 'Total', 'Location'];
+    row = [e.ts, e.counter, e.code, e.desc, e.per, e.full, e.extra, e.total, e.loc];
   } else {
-    tab = TAB.metalsOut;
-    // Timestamp | Counter | Category | Code | Description | Weight | Type | Per Unit | Full | Extra | Total | Location
-    row = [e.ts, e.counter, e.category, e.code, e.desc, e.weight, e.type, e.per, e.full, e.extra, e.total, e.loc];
+    tab = TAB.endsOut;
+    header = ['Timestamp', 'Counter', 'Label Code', 'Description', 'Weight', 'Type', 'Per Unit', 'Full', 'Extra', 'Total', 'Location'];
+    row = [e.ts, e.counter, e.code, e.desc, e.weight, e.type, e.per, e.full, e.extra, e.total, e.loc];
   }
-  await sheets.append(tab, row);
+  await sheets.appendEnsuring(tab, row, header);
   return true;
 }
 
@@ -196,6 +204,32 @@ async function makeSheets(env) {
     async append(tab, row) {
       return call(base + '/values/' + encodeURIComponent(tab) + ':append?valueInputOption=USER_ENTERED&insertDataOption=INSERT_ROWS',
         { method: 'POST', headers: { ...auth, 'Content-Type': 'application/json' }, body: JSON.stringify({ values: [row] }) });
+    },
+    // Create a tab (with a header row) if it doesn't already exist.
+    async ensureTab(title, header) {
+      const meta = await call(base + '?fields=sheets.properties.title', { headers: auth });
+      const exists = (meta.sheets || []).some((s) => s.properties && s.properties.title === title);
+      if (exists) return false;
+      await call(base + ':batchUpdate',
+        { method: 'POST', headers: { ...auth, 'Content-Type': 'application/json' },
+          body: JSON.stringify({ requests: [{ addSheet: { properties: { title } } }] }) });
+      if (header && header.length) {
+        await call(base + '/values/' + encodeURIComponent(title) + '!A1:append?valueInputOption=RAW&insertDataOption=INSERT_ROWS',
+          { method: 'POST', headers: { ...auth, 'Content-Type': 'application/json' }, body: JSON.stringify({ values: [header] }) });
+      }
+      return true;
+    },
+    // Append; if the tab doesn't exist yet, create it (with header) and retry once.
+    async appendEnsuring(tab, row, header) {
+      try {
+        return await this.append(tab, row);
+      } catch (err) {
+        if (String((err && err.message) || '').indexOf('Unable to parse range') !== -1) {
+          await this.ensureTab(tab, header);
+          return await this.append(tab, row);
+        }
+        throw err;
+      }
     },
   };
 }

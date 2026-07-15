@@ -11,7 +11,8 @@ Browser (github.io page)  ──fetch {fn,args}──▶  Cloudflare Worker  ─
   directly with a **Google service account** (no Apps Script). Self-contained — paste it into a
   dashboard Worker, no build step.
 - Both **reads and writes** run on the Worker: `getLookups()` loads the three lookup tabs and
-  `appendEntry()` writes a counted row to the `Metals` / `Plastics` tabs — the same contract the
+  `appendEntry()` writes a counted row to the `Cans` / `Ends` / `Plastics` tabs (Cans and Ends
+  are auto-created on first use if missing) — the same contract the
   Apps Script backend used. The Apps Script version can stay as a fallback if you like.
 
 > Uses GitHub Pages, not Cloudflare Pages, for the front end.
@@ -61,15 +62,17 @@ Commit. (Or paste me the Worker URL and I'll set it and push.)
 ## Step 5 — Verify
 - The landing screen shows **"N items loaded"** (the lookup tabs came through the Worker).
 - Pick a department, scan/type a code, enter a count, **Save entry** → a "Saved · N units" toast,
-  and a new row appears in the `Metals` or `Plastics` tab of the sheet.
+  and a new row appears in the `Cans`, `Ends`, or `Plastics` tab of the sheet (Cans/Ends are
+  created automatically the first time you save one).
 
 ## Troubleshooting
 - App shows **"Service account not configured"** → the Worker secrets didn't save, or you didn't
   redeploy after adding them.
 - **"Sheets API 403"** → the sheet isn't shared with the service account email, or the Sheets API
   isn't enabled on its project.
-- **"Sheets API 400 … Unable to parse range"** → a tab name doesn't match. The Worker expects
-  `Ends_Lookup`, `Cans_Lookup`, `Plastics_Lookup`, `Metals`, `Plastics` (edit `TAB` in
+- **"Sheets API 400 … Unable to parse range"** → a *lookup* tab name doesn't match. The Worker
+  expects `Ends_Lookup`, `Cans_Lookup`, `Plastics_Lookup` for reads; output tabs `Cans`, `Ends`,
+  `Plastics` are created automatically (edit `TAB` in
   `worker.js` if yours differ).
 - **Could not load item lists / CORS error in dev-tools** → `API_URL` in `docs/index.html`
   doesn't match the Worker URL, or `ALLOWED_ORIGIN` doesn't match your github.io origin (or

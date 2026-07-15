@@ -107,6 +107,12 @@ input,select{font-family:inherit;font-size:16px}
 .results .row .code.nocode{color:var(--ink-soft);font-style:italic}
 .results .row .d{font-size:14px}
 .results .empty{padding:16px;color:var(--ink-soft);text-align:center;font-size:14px}
+.results .row .tally{display:inline-block;margin-left:8px;background:var(--ok);color:#fff;font-family:'JetBrains Mono';
+  font-weight:700;font-size:11px;padding:1px 7px;border-radius:999px;vertical-align:middle}
+
+/* "already counted this session" note on the item card */
+.prior{background:#FFF8E6;border-top:1px solid #F0DFA8;color:#7a5a12;padding:9px 16px;font-size:13px}
+.prior b{font-family:'JetBrains Mono'}
 
 /* item card */
 .card{background:var(--panel);border:1px solid var(--line);border-radius:var(--radius);overflow:hidden;
@@ -143,6 +149,7 @@ input,select{font-family:inherit;font-size:16px}
 .recent{margin-top:2px}
 .recent h3{font-size:13px;font-weight:700;color:var(--ink-soft);letter-spacing:.04em;text-transform:uppercase;
   display:flex;justify-content:space-between;align-items:center;margin:4px 2px 10px}
+.recent h3 .acts{display:flex;gap:14px}
 .recent h3 .exp{color:var(--dept);text-decoration:underline;text-underline-offset:2px;font-size:12px}
 .entry{background:var(--panel);border:1px solid var(--line);border-radius:11px;padding:11px 13px;margin-bottom:8px;
   display:flex;align-items:center;gap:12px}
@@ -150,6 +157,7 @@ input,select{font-family:inherit;font-size:16px}
 .entry .info .c{font-family:'JetBrains Mono';font-size:12px;color:var(--dept);font-weight:700}
 .entry .info .d{font-size:14px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .entry .info .m{font-size:11px;color:var(--ink-soft);margin-top:1px}
+.entry .info .loc{font-size:12px;color:var(--dept);font-weight:700;margin-top:3px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .entry .qty{font-family:'JetBrains Mono';font-weight:800;font-size:18px;text-align:right;flex:none}
 .entry .qty small{display:block;font-size:9px;color:var(--ink-soft);letter-spacing:.08em}
 .empty-recent{color:var(--ink-soft);font-size:14px;text-align:center;padding:24px 0;border:1px dashed var(--line);border-radius:12px}
@@ -238,7 +246,7 @@ input,select{font-family:inherit;font-size:16px}
       <div id="cardMount"></div>
 
       <div class="recent">
-        <h3>This session <span class="exp linkbtn hide" id="exportBtn" onclick="exportCSV()">Download CSV</span></h3>
+        <h3>This session <span class="acts"><span class="exp linkbtn hide" id="clearBtn" onclick="clearSession()">Clear</span><span class="exp linkbtn hide" id="exportBtn" onclick="exportCSV()">Download CSV</span></span></h3>
         <div id="recentList"><div class="empty-recent">Scanned items will appear here after you save them.</div></div>
       </div>
     </div>
@@ -258,7 +266,7 @@ var API_SECRET = '';
 
 /* Bump this on every page change — the number shows in the bottom-right corner so you can
    confirm a reload actually picked up the latest page (an old cached page has no tag). */
-var APP_VERSION = 'v3';
+var APP_VERSION = 'v4';
 
 /* Call a backend function: callApi('fn', [arg1, arg2]) -> Promise(result). */
 function callApi(fn, args){
@@ -281,6 +289,39 @@ var DATA = {ends:[],cans:[],plastics:[]};
 /* ====== APP LOGIC ====== */
 const state = { dept:null, metalKind:'ends', entries:{metals:[], plastics:[]}, current:null };
 
+/* ---- session persistence: entries survive closing/reopening the app ---- */
+const SESSION_KEY = 'invCountSession_v1';
+function persistSession(){
+  try{
+    localStorage.setItem(SESSION_KEY, JSON.stringify({
+      entries: state.entries,
+      counter: $('counterName') ? $('counterName').value : '',
+      lastDept: state.dept,
+      metalKind: state.metalKind
+    }));
+  }catch(e){ /* storage disabled/full — just skip persisting */ }
+}
+function loadSession(){
+  try{
+    const s = JSON.parse(localStorage.getItem(SESSION_KEY)||'null');
+    if(!s) return null;
+    if(s.entries){
+      state.entries.metals   = Array.isArray(s.entries.metals)   ? s.entries.metals   : [];
+      state.entries.plastics = Array.isArray(s.entries.plastics) ? s.entries.plastics : [];
+    }
+    if(s.metalKind) state.metalKind = s.metalKind;
+    return s;
+  }catch(e){ return null; }
+}
+function restoreSession(s){
+  if(!s) return;
+  if($('counterName') && typeof s.counter==='string') $('counterName').value = s.counter;
+  if(s.lastDept==='metals' || s.lastDept==='plastics'){
+    openDept(s.lastDept);
+    if(s.lastDept==='metals' && s.metalKind) setMetalKind(s.metalKind);
+  }
+}
+
 const $ = id => document.getElementById(id);
 const norm = s => (s||'').toString().trim().toUpperCase();
 const asNum = v => { const n = parseFloat(v); return isNaN(n)?0:n; };
@@ -300,6 +341,22 @@ function activeIdx(){
   return state.metalKind==='ends' ? IDX.ends : IDX.cans;
 }
 function activeEntries(){ return state.dept==='plastics'?state.entries.plastics:state.entries.metals; }
+
+/* key an item / entry so we can match "already counted" to a lookup row */
+function itemKey(x){ return norm(x.code) || ('#'+norm(x.desc)); }
+/* sum of units already counted this session (for the current dept + Cans/Ends kind), by item */
+function sessionTallyMap(){
+  const cat = state.dept==='plastics' ? 'Plastics' : (state.metalKind==='ends'?'Ends':'Cans');
+  const m={};
+  activeEntries().forEach(e=>{
+    if(state.dept==='metals' && e.category!==cat) return; // keep Cans and Ends tallies separate
+    const k=itemKey(e);
+    if(!m[k]) m[k]={units:0, loc:''};
+    m[k].units += Number(e.total)||0;
+    if(e.loc) m[k].loc = e.loc; // most recent non-empty location
+  });
+  return m;
+}
 
 /* ---- navigation ---- */
 function openDept(dept){
@@ -368,9 +425,14 @@ function runSearch(){
   if(q.length<1){ box.classList.add('hide'); return; }
   const hits=activeList().filter(it=> norm(it.desc).includes(q) || norm(it.code).includes(q)).slice(0,40);
   if(!hits.length){ box.innerHTML='<div class="empty">No matches</div>'; box.classList.remove('hide'); return; }
-  box.innerHTML=hits.map((it,i)=>`<div class="row" onclick="pickResult(${DATA[listKey()].indexOf(it)})">
+  const tally=sessionTallyMap();
+  box.innerHTML=hits.map((it,i)=>{
+    const t=tally[itemKey(it)];
+    const badge=t?`<span class="tally">✓ ${t.units.toLocaleString()} u${t.loc?(' · '+esc(t.loc)):''}</span>`:'';
+    return `<div class="row" onclick="pickResult(${DATA[listKey()].indexOf(it)})">
       <span class="code ${it.code?'':'nocode'}">${it.code?esc(it.code):'no barcode'}</span>
-      <span class="d">${esc(it.desc)}</span></div>`).join('');
+      <span class="d">${esc(it.desc)}${badge}</span></div>`;
+  }).join('');
   box.classList.remove('hide');
 }
 function listKey(){ return state.dept==='plastics'?'plastics':(state.metalKind==='ends'?'ends':'cans'); }
@@ -387,6 +449,9 @@ function selectItem(it){
 
   const inputVal = v => v==='INPUT' ? '' : (v||'');
   const inputPh  = v => v==='INPUT' ? 'enter value' : '';
+
+  const t = sessionTallyMap()[itemKey(it)];
+  const prior = t ? `<div class="prior">Already counted this session: <b>${t.units.toLocaleString()}</b> units${t.loc?(' · last location '+esc(t.loc)):''}</div>` : '';
 
   let extraFields='';
   if(dept==='metals' && kind==='ends'){
@@ -407,6 +472,7 @@ function selectItem(it){
       <div class="code">${it.code?esc(it.code):'— no barcode —'}</div>
       <div class="desc">${esc(it.desc)}</div>
     </div>
+    ${prior}
     <div class="card-body">
       <div class="grid">
         <div class="fld full"><label>${codeLabel}</label><input id="f_code" class="mono" value="${esc(it.code||'')}"></div>
@@ -465,6 +531,7 @@ function saveEntry(){
   callApi('appendEntry', [entry, state.dept])
     .then(function(){
       activeEntries().unshift(entry);
+      persistSession();
       renderRecent();
       toast('Saved · '+total.toLocaleString()+' units');
       clearCardOnly();
@@ -482,16 +549,24 @@ function renderRecent(){
   const list=activeEntries();
   $('sessCount').textContent=list.length;
   $('exportBtn').classList.toggle('hide', list.length===0);
+  $('clearBtn').classList.toggle('hide', list.length===0);
   const el=$('recentList');
   if(!list.length){ el.innerHTML='<div class="empty-recent">Scanned items will appear here after you save them.</div>'; return; }
   el.innerHTML=list.map(e=>`<div class="entry">
      <div class="info">
        <div class="c">${esc(e.code||'no barcode')} · <span style="opacity:.7">${esc(e.category)}</span></div>
        <div class="d">${esc(e.desc)}</div>
-       <div class="m">${e.full} full × ${e.per} + ${e.extra} · ${esc(e.loc||'no location')} · ${esc(e.counter)}</div>
+       <div class="m">${e.full} full × ${e.per} + ${e.extra} loose · ${esc(e.counter)}</div>
+       <div class="loc">📍 ${esc(e.loc||'no location')}</div>
      </div>
      <div class="qty">${e.total.toLocaleString()}<small>UNITS</small></div>
    </div>`).join('');
+}
+function clearSession(){
+  const list=activeEntries();
+  if(list.length && !confirm('Clear the '+list.length+' item(s) in this session list?\n\nYour saved rows in the Google Sheet are NOT affected.')) return;
+  if(state.dept==='plastics') state.entries.plastics=[]; else state.entries.metals=[];
+  persistSession(); renderRecent(); focusScan();
 }
 function exportCSV(){
   const list=activeEntries(); if(!list.length) return;
@@ -519,6 +594,7 @@ function onData(payload){
   DATA = payload; buildIndex();
   document.getElementById('landingFoot').textContent =
     (DATA.ends.length+DATA.cans.length+DATA.plastics.length)+' items loaded · records save to your Google Sheet';
+  if(state.dept) updateHints(); // refresh the "N items" hint if we resumed into a department
 }
 function onDataFail(err){
   document.getElementById('landingFoot').textContent = 'Could not load item lists — reload the page.';
@@ -535,6 +611,10 @@ function toast(msg,type){
 
 /* show the build/version tag */
 $('buildTag').textContent = APP_VERSION;
+
+/* ---- persist counter name + resume the saved session on open ---- */
+$('counterName').addEventListener('input', persistSession);
+restoreSession(loadSession());
 </script>
 </body>
 </html>

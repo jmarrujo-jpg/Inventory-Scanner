@@ -266,7 +266,7 @@ var API_SECRET = '';
 
 /* Bump this on every page change — the number shows in the bottom-right corner so you can
    confirm a reload actually picked up the latest page (an old cached page has no tag). */
-var APP_VERSION = 'v5';
+var APP_VERSION = 'v6';
 
 /* Call a backend function: callApi('fn', [arg1, arg2]) -> Promise(result). */
 function callApi(fn, args){
@@ -570,11 +570,11 @@ function exportCSV(){
   const list=activeEntries(); if(!list.length) return;
   let header, rows;
   if(state.dept==='plastics'){
-    header=['Timestamp','Counter','Item #','Description','Type','Per Unit','Full','Extra','Total','Location'];
-    rows=list.map(e=>[e.ts,e.counter,e.code,e.desc,e.type,e.per,e.full,e.extra,e.total,e.loc]);
+    header=['Timestamp','Counter','Item #','Description','Type','Per Unit','Full','Extra','Location','Total'];
+    rows=list.map(e=>[e.ts,e.counter,e.code,e.desc,e.type,e.per,e.full,e.extra,e.loc,e.total]);
   }else{
-    header=['Timestamp','Counter','Category','Code','Description','Weight','Type','Per Unit','Full','Extra','Total','Location'];
-    rows=list.map(e=>[e.ts,e.counter,e.category,e.code,e.desc,e.weight,e.type,e.per,e.full,e.extra,e.total,e.loc]);
+    header=['Timestamp','Counter','Category','Code','Description','Weight','Type','Per Unit','Full','Extra','Location','Total'];
+    rows=list.map(e=>[e.ts,e.counter,e.category,e.code,e.desc,e.weight,e.type,e.per,e.full,e.extra,e.loc,e.total]);
   }
   const csv=[header,...rows].map(r=>r.map(c=>{
     const s=(c??'').toString(); return /[",\n]/.test(s)?'"'+s.replace(/"/g,'""')+'"':s;

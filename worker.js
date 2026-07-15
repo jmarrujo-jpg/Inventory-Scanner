@@ -50,7 +50,7 @@ export default {
       new Response(JSON.stringify(obj), { status, headers: { ...cors, 'Content-Type': 'application/json' } });
 
     if (request.method === 'OPTIONS') return new Response(null, { status: 204, headers: cors });
-    if (request.method === 'GET') return json({ ok: true, service: 'inventory-count-api', build: 'v2' }, 200);
+    if (request.method === 'GET') return json({ ok: true, service: 'inventory-count-api', build: 'v3' }, 200);
     if (request.method !== 'POST') return json({ ok: false, error: 'Method not allowed' }, 405);
 
     let payload;
@@ -122,18 +122,19 @@ async function getLookups(sheets) {
 async function appendEntry(sheets, e, dept) {
   e = e || {};
   let tab, row, header;
+  // NOTE: Location comes before Total (Total is the last column) to match the sheet layout.
   if (dept === 'plastics') {
     tab = TAB.plasticsOut;
-    header = ['Timestamp', 'Counter', 'Item #', 'Description', 'Type', 'Per Unit', 'Full', 'Extra', 'Total', 'Location'];
-    row = [e.ts, e.counter, e.code, e.desc, e.type, e.per, e.full, e.extra, e.total, e.loc];
+    header = ['Timestamp', 'Counter', 'Item #', 'Description', 'Type', 'Per Unit', 'Full', 'Extra', 'Location', 'Total'];
+    row = [e.ts, e.counter, e.code, e.desc, e.type, e.per, e.full, e.extra, e.loc, e.total];
   } else if (e.category === 'Cans') {
     tab = TAB.cansOut;
-    header = ['Timestamp', 'Counter', 'Label Number', 'Description', 'Per Unit', 'Full', 'Extra', 'Total', 'Location'];
-    row = [e.ts, e.counter, e.code, e.desc, e.per, e.full, e.extra, e.total, e.loc];
+    header = ['Timestamp', 'Counter', 'Label Number', 'Description', 'Per Unit', 'Full', 'Extra', 'Location', 'Total'];
+    row = [e.ts, e.counter, e.code, e.desc, e.per, e.full, e.extra, e.loc, e.total];
   } else {
     tab = TAB.endsOut;
-    header = ['Timestamp', 'Counter', 'Label Code', 'Description', 'Weight', 'Type', 'Per Unit', 'Full', 'Extra', 'Total', 'Location'];
-    row = [e.ts, e.counter, e.code, e.desc, e.weight, e.type, e.per, e.full, e.extra, e.total, e.loc];
+    header = ['Timestamp', 'Counter', 'Label Code', 'Description', 'Weight', 'Type', 'Per Unit', 'Full', 'Extra', 'Location', 'Total'];
+    row = [e.ts, e.counter, e.code, e.desc, e.weight, e.type, e.per, e.full, e.extra, e.loc, e.total];
   }
   await sheets.appendEnsuring(tab, row, header);
   return true;

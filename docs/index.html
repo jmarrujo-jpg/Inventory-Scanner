@@ -1,0 +1,528 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>Inventory Count</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Archivo:wght@500;600;700;800;900&family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@500;600;700&display=swap" rel="stylesheet">
+<style>
+:root{
+  --paper:#E9EAEC; --panel:#FBFBFC; --ink:#161A1F; --ink-soft:#5A626C; --line:#D2D6DB;
+  --metal:#2C3E50; --metal-accent:#E8A21A; --metal-soft:#EEF1F4;
+  --plastic:#0E7C6E; --plastic-accent:#12B3A0; --plastic-soft:#E4F3F1;
+  --danger:#C0392B; --ok:#2E7D48;
+  --radius:14px; --tap:60px;
+  --dept:#2C3E50; --dept-accent:#E8A21A; --dept-soft:#EEF1F4; --dept-ink:#fff;
+}
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+html,body{margin:0;height:100%}
+body{
+  background:var(--paper); color:var(--ink);
+  font-family:'Inter',system-ui,sans-serif; font-size:16px; line-height:1.4;
+  overscroll-behavior:none;
+}
+.mono{font-family:'JetBrains Mono',ui-monospace,monospace}
+.hide{display:none!important}
+button{font-family:inherit;cursor:pointer;border:none;background:none;color:inherit}
+input,select{font-family:inherit;font-size:16px}
+
+/* ---------- App frame ---------- */
+#app{max-width:720px;margin:0 auto;min-height:100%;display:flex;flex-direction:column}
+
+/* ---------- Landing ---------- */
+#landing{flex:1;display:flex;flex-direction:column;padding:26px 20px 22px}
+.brand{display:flex;align-items:center;gap:12px;margin-bottom:6px}
+.brand .dot{width:14px;height:14px;border-radius:3px;background:var(--metal-accent);box-shadow:3px 3px 0 var(--plastic-accent)}
+.brand h1{font-family:'Archivo';font-weight:900;font-size:20px;letter-spacing:-.02em;margin:0}
+.brand span{color:var(--ink-soft);font-size:13px;font-weight:500}
+.tagline{color:var(--ink-soft);font-size:14px;margin:2px 0 26px 26px}
+.choose{flex:1;display:grid;grid-template-rows:1fr 1fr;gap:16px}
+.dept-card{
+  position:relative;border-radius:var(--radius);overflow:hidden;
+  display:flex;flex-direction:column;justify-content:space-between;
+  padding:24px;text-align:left;color:#fff;transition:transform .08s ease, box-shadow .15s;
+  box-shadow:0 10px 24px rgba(20,26,31,.12);
+}
+.dept-card:active{transform:scale(.985)}
+.dept-card.metals{background:linear-gradient(150deg,#33475b,#212e3a)}
+.dept-card.plastics{background:linear-gradient(150deg,#12988a,#0b6459)}
+.dept-card .eyebrow{font-family:'JetBrains Mono';font-size:12px;letter-spacing:.22em;text-transform:uppercase;opacity:.72}
+.dept-card h2{font-family:'Archivo';font-weight:900;font-size:clamp(34px,10vw,52px);letter-spacing:-.03em;margin:6px 0 0;line-height:.95}
+.dept-card .sub{font-size:14px;opacity:.85;margin-top:8px;max-width:80%}
+.dept-card .glyph{position:absolute;right:-8px;top:50%;transform:translateY(-50%);opacity:.14}
+.dept-card .go{align-self:flex-start;margin-top:18px;background:rgba(255,255,255,.16);backdrop-filter:blur(2px);
+  padding:10px 16px;border-radius:9px;font-weight:700;font-size:15px;display:flex;align-items:center;gap:8px}
+.metals .eyebrow,.metals .go{color:#fff}
+.metals h2{color:var(--metal-accent)}
+.plastics h2{color:#c9fff5}
+.landing-foot{color:var(--ink-soft);font-size:12px;text-align:center;margin-top:18px}
+
+/* ---------- Count screen ---------- */
+#count{flex:1;display:none;flex-direction:column}
+.topbar{position:sticky;top:0;z-index:5;background:var(--dept);color:var(--dept-ink);
+  padding:12px 14px calc(12px + env(safe-area-inset-top));display:flex;align-items:center;gap:12px}
+.topbar .back{width:42px;height:42px;border-radius:10px;background:rgba(255,255,255,.14);display:grid;place-items:center;font-size:22px;flex:none}
+.topbar .title{flex:1;min-width:0}
+.topbar .title .dpt{font-family:'Archivo';font-weight:900;font-size:22px;letter-spacing:-.02em;line-height:1}
+.topbar .title .who{font-size:12px;opacity:.85;margin-top:3px;display:flex;align-items:center;gap:6px}
+.topbar .who input{background:rgba(255,255,255,.16);border:1px solid rgba(255,255,255,.25);color:#fff;border-radius:7px;
+  padding:3px 8px;font-size:12px;width:120px}
+.topbar .who input::placeholder{color:rgba(255,255,255,.7)}
+.count-badge{background:rgba(0,0,0,.22);border-radius:9px;padding:6px 11px;text-align:center;flex:none}
+.count-badge b{display:block;font-family:'JetBrains Mono';font-size:19px;line-height:1}
+.count-badge small{font-size:10px;opacity:.8;letter-spacing:.08em;text-transform:uppercase}
+
+.body{padding:14px;flex:1;display:flex;flex-direction:column;gap:14px}
+
+/* sub-toggle for metals */
+.seg{display:flex;background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:4px;gap:4px}
+.seg button{flex:1;padding:12px;border-radius:9px;font-weight:700;font-size:15px;color:var(--ink-soft)}
+.seg button.on{background:var(--dept);color:#fff}
+
+/* scan bay - signature element */
+.scanbay{background:var(--panel);border:1px solid var(--line);border-radius:var(--radius);padding:16px;
+  box-shadow:0 2px 0 var(--line)}
+.scanbay label{font-family:'JetBrains Mono';font-size:11px;letter-spacing:.18em;text-transform:uppercase;color:var(--ink-soft)}
+.scan-input-wrap{position:relative;margin-top:8px}
+.scan-input-wrap .readout{position:absolute;left:14px;top:50%;transform:translateY(-50%);color:var(--dept-accent);
+  font-family:'JetBrains Mono';font-weight:700;pointer-events:none;opacity:.5}
+#scanInput{width:100%;height:var(--tap);border:2px solid var(--dept);border-radius:11px;background:#fff;
+  padding:0 16px 0 40px;font-family:'JetBrains Mono';font-weight:700;font-size:22px;letter-spacing:.02em;color:var(--ink);outline:none}
+#scanInput:focus{box-shadow:0 0 0 4px var(--dept-soft)}
+.scan-hint{margin-top:8px;font-size:13px;color:var(--ink-soft);display:flex;justify-content:space-between;align-items:center;gap:10px}
+.linkbtn{color:var(--dept);font-weight:700;font-size:13px;text-decoration:underline;text-underline-offset:2px}
+
+/* search dropdown */
+.search-wrap{position:relative}
+#searchInput{width:100%;height:52px;border:1.5px solid var(--line);border-radius:11px;padding:0 14px;background:#fff;outline:none}
+#searchInput:focus{border-color:var(--dept)}
+.results{position:absolute;left:0;right:0;top:56px;z-index:9;background:#fff;border:1px solid var(--line);
+  border-radius:12px;box-shadow:0 16px 34px rgba(20,26,31,.18);max-height:44vh;overflow:auto}
+.results .row{padding:12px 14px;border-bottom:1px solid var(--line);display:flex;flex-direction:column;gap:2px}
+.results .row:last-child{border-bottom:none}
+.results .row:active{background:var(--dept-soft)}
+.results .row .code{font-family:'JetBrains Mono';font-weight:700;font-size:13px;color:var(--dept)}
+.results .row .code.nocode{color:var(--ink-soft);font-style:italic}
+.results .row .d{font-size:14px}
+.results .empty{padding:16px;color:var(--ink-soft);text-align:center;font-size:14px}
+
+/* item card */
+.card{background:var(--panel);border:1px solid var(--line);border-radius:var(--radius);overflow:hidden;
+  animation:pop .16s ease}
+@keyframes pop{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:none}}
+.card-head{background:var(--dept);color:#fff;padding:14px 16px}
+.card-head .code{font-family:'JetBrains Mono';font-weight:700;font-size:15px;color:var(--dept-accent)}
+.card-head .desc{font-family:'Archivo';font-weight:700;font-size:19px;line-height:1.15;margin-top:3px}
+.card-body{padding:14px 16px 4px}
+.grid{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+.fld{display:flex;flex-direction:column;gap:5px;margin-bottom:12px}
+.fld.full{grid-column:1/-1}
+.fld label{font-size:12px;font-weight:700;color:var(--ink-soft);letter-spacing:.02em;display:flex;justify-content:space-between}
+.fld label .tag{font-weight:600;font-size:10px;background:var(--dept-soft);color:var(--dept);padding:1px 6px;border-radius:5px}
+.fld input{height:52px;border:1.5px solid var(--line);border-radius:10px;padding:0 12px;background:#fff;width:100%;outline:none}
+.fld input:focus{border-color:var(--dept);box-shadow:0 0 0 3px var(--dept-soft)}
+.fld input.mono{font-family:'JetBrains Mono';font-weight:600}
+.fld input.big{height:60px;font-size:24px;font-weight:700;text-align:center;font-family:'JetBrains Mono'}
+.fld input[readonly]{background:var(--dept-soft);border-color:transparent;color:var(--dept);font-weight:700}
+
+.total-strip{grid-column:1/-1;background:var(--dept);color:#fff;border-radius:11px;padding:12px 16px;
+  display:flex;justify-content:space-between;align-items:center;margin:2px 0 12px}
+.total-strip .lbl{font-size:12px;letter-spacing:.14em;text-transform:uppercase;opacity:.85}
+.total-strip .val{font-family:'JetBrains Mono';font-weight:800;font-size:30px;color:var(--dept-accent)}
+.total-strip .val small{font-size:13px;color:#fff;opacity:.8;font-weight:600;margin-left:4px}
+
+.actions{display:flex;gap:10px;padding:0 16px 16px}
+.btn{flex:1;height:var(--tap);border-radius:12px;font-weight:800;font-size:17px;display:flex;align-items:center;justify-content:center;gap:8px}
+.btn.primary{background:var(--dept);color:#fff}
+.btn.primary:active{filter:brightness(.92)}
+.btn.ghost{background:transparent;border:1.5px solid var(--line);color:var(--ink-soft);flex:0 0 96px}
+
+/* recent list */
+.recent{margin-top:2px}
+.recent h3{font-size:13px;font-weight:700;color:var(--ink-soft);letter-spacing:.04em;text-transform:uppercase;
+  display:flex;justify-content:space-between;align-items:center;margin:4px 2px 10px}
+.recent h3 .exp{color:var(--dept);text-decoration:underline;text-underline-offset:2px;font-size:12px}
+.entry{background:var(--panel);border:1px solid var(--line);border-radius:11px;padding:11px 13px;margin-bottom:8px;
+  display:flex;align-items:center;gap:12px}
+.entry .info{flex:1;min-width:0}
+.entry .info .c{font-family:'JetBrains Mono';font-size:12px;color:var(--dept);font-weight:700}
+.entry .info .d{font-size:14px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.entry .info .m{font-size:11px;color:var(--ink-soft);margin-top:1px}
+.entry .qty{font-family:'JetBrains Mono';font-weight:800;font-size:18px;text-align:right;flex:none}
+.entry .qty small{display:block;font-size:9px;color:var(--ink-soft);letter-spacing:.08em}
+.empty-recent{color:var(--ink-soft);font-size:14px;text-align:center;padding:24px 0;border:1px dashed var(--line);border-radius:12px}
+
+/* toast */
+#toast{position:fixed;left:50%;bottom:24px;transform:translateX(-50%) translateY(120px);
+  background:var(--ok);color:#fff;padding:14px 22px;border-radius:12px;font-weight:700;box-shadow:0 12px 30px rgba(0,0,0,.25);
+  z-index:50;transition:transform .28s cubic-bezier(.2,.9,.3,1.2);max-width:90vw;text-align:center}
+#toast.show{transform:translateX(-50%) translateY(0)}
+#toast.err{background:var(--danger)}
+
+.notfound{background:#FFF4F1;border:1px solid #F3C6BC;color:#8a2d1c;border-radius:12px;padding:14px 16px;font-size:14px;display:flex;gap:10px;align-items:flex-start}
+.notfound b{color:var(--danger)}
+
+@media (min-width:560px){ .dept-card .sub{max-width:60%} }
+</style>
+</head>
+<body>
+<div id="app">
+
+  <!-- LANDING -->
+  <section id="landing">
+    <div class="brand">
+      <div class="dot"></div>
+      <h1>Inventory Count</h1>
+    </div>
+    <p class="tagline">Pick a department to start counting.</p>
+    <div class="choose">
+      <button class="dept-card metals" onclick="openDept('metals')">
+        <svg class="glyph" width="180" height="180" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="1.2"><rect x="6" y="3" width="12" height="18" rx="2"/><path d="M6 7h12M6 17h12"/></svg>
+        <span class="eyebrow">Dept 01 — Cans &amp; Ends</span>
+        <div><h2>Metals</h2><div class="sub">Scan a label, count cans and ends separately.</div></div>
+        <span class="go">Start counting →</span>
+      </button>
+      <button class="dept-card plastics" onclick="openDept('plastics')">
+        <svg class="glyph" width="180" height="180" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="1.2"><path d="M6 8h12l-1 12H7L6 8z"/><path d="M5 8h14M9 5h6l1 3H8l1-3z"/></svg>
+        <span class="eyebrow">Dept 02 — Pails · Tubs · Lids</span>
+        <div><h2>Plastics</h2><div class="sub">Scan an item number to count all plastics.</div></div>
+        <span class="go">Start counting →</span>
+      </button>
+    </div>
+    <div class="landing-foot" id="landingFoot">Loading item lists…</div>
+  </section>
+
+  <!-- COUNT -->
+  <section id="count">
+    <div class="topbar">
+      <button class="back" onclick="goHome()" aria-label="Back">←</button>
+      <div class="title">
+        <div class="dpt" id="deptTitle">Metals</div>
+        <div class="who">Counter: <input id="counterName" placeholder="your name" autocomplete="off"></div>
+      </div>
+      <div class="count-badge"><b id="sessCount">0</b><small>entries</small></div>
+    </div>
+
+    <div class="body">
+      <div class="seg hide" id="metalSeg">
+        <button id="segEnds" class="on" onclick="setMetalKind('ends')">Ends</button>
+        <button id="segCans" onclick="setMetalKind('cans')">Cans</button>
+      </div>
+
+      <div class="scanbay">
+        <label id="scanLabel">Scan barcode</label>
+        <div class="scan-input-wrap">
+          <span class="readout">›</span>
+          <input id="scanInput" inputmode="text" autocomplete="off" autocapitalize="characters"
+                 spellcheck="false" placeholder="scan or type code, then Enter">
+        </div>
+        <div class="scan-hint">
+          <span id="scanCountHint"></span>
+          <span class="linkbtn" onclick="toggleSearch()" id="searchToggle">Search by description</span>
+        </div>
+        <div class="search-wrap hide" id="searchWrap" style="margin-top:10px">
+          <input id="searchInput" placeholder="type any part of the description or code" autocomplete="off">
+          <div class="results hide" id="results"></div>
+        </div>
+      </div>
+
+      <div id="notFound" class="notfound hide"></div>
+
+      <!-- item card injected here -->
+      <div id="cardMount"></div>
+
+      <div class="recent">
+        <h3>This session <span class="exp linkbtn hide" id="exportBtn" onclick="exportCSV()">Download CSV</span></h3>
+        <div id="recentList"><div class="empty-recent">Scanned items will appear here after you save them.</div></div>
+      </div>
+    </div>
+  </section>
+
+</div>
+<div id="toast"></div>
+
+<script>
+/* ====== Backend config ======
+   This page is static (GitHub Pages). It talks to a Cloudflare Worker that reads/writes the
+   Google Sheet. Set API_URL to your Worker URL (see HOSTING.md). API_SECRET only if you set
+   API_TOKEN on the Worker. */
+var API_URL = 'https://REPLACE-with-your-worker.workers.dev';
+var API_SECRET = '';
+
+/* Call a backend function: callApi('fn', [arg1, arg2]) -> Promise(result). */
+function callApi(fn, args){
+  return fetch(API_URL, {
+    method:'POST',
+    headers:{'Content-Type':'application/json'},
+    body:JSON.stringify({fn:fn, args:args||[], secret:API_SECRET})
+  })
+  .then(function(r){ return r.json(); })
+  .then(function(j){
+    if(!j || j.ok!==true) throw new Error((j && j.error) ? j.error : 'Request failed');
+    return j.result;
+  });
+}
+
+/* ====== DATA loaded live from the Google Sheet lookup tabs ====== */
+var DATA = {ends:[],cans:[],plastics:[]};
+</script>
+<script>
+/* ====== APP LOGIC ====== */
+const state = { dept:null, metalKind:'ends', entries:{metals:[], plastics:[]}, current:null };
+
+const $ = id => document.getElementById(id);
+const norm = s => (s||'').toString().trim().toUpperCase();
+const asNum = v => { const n = parseFloat(v); return isNaN(n)?0:n; };
+const esc = s => (s||'').toString().replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+
+/* build code->item index per list */
+function indexOf(list){ const m={}; list.forEach(it=>{ if(it.code) m[norm(it.code)]=it; }); return m; }
+var IDX = { ends:{}, cans:{}, plastics:{} };
+function buildIndex(){ IDX = { ends:indexOf(DATA.ends), cans:indexOf(DATA.cans), plastics:indexOf(DATA.plastics) }; }
+
+function activeList(){
+  if(state.dept==='plastics') return DATA.plastics;
+  return state.metalKind==='ends' ? DATA.ends : DATA.cans;
+}
+function activeIdx(){
+  if(state.dept==='plastics') return IDX.plastics;
+  return state.metalKind==='ends' ? IDX.ends : IDX.cans;
+}
+function activeEntries(){ return state.dept==='plastics'?state.entries.plastics:state.entries.metals; }
+
+/* ---- navigation ---- */
+function openDept(dept){
+  state.dept = dept;
+  document.documentElement.style.setProperty('--dept', dept==='plastics'?'var(--plastic)':'var(--metal)');
+  document.documentElement.style.setProperty('--dept-accent', dept==='plastics'?'var(--plastic-accent)':'var(--metal-accent)');
+  document.documentElement.style.setProperty('--dept-soft', dept==='plastics'?'var(--plastic-soft)':'var(--metal-soft)');
+  $('deptTitle').textContent = dept==='plastics'?'Plastics':'Metals';
+  $('metalSeg').classList.toggle('hide', dept==='plastics');
+  $('scanLabel').textContent = dept==='plastics'?'Scan item number':'Scan barcode';
+  $('landing').style.display='none';
+  $('count').style.display='flex';
+  clearCard(); renderRecent(); updateHints();
+  focusScan();
+}
+function goHome(){
+  $('count').style.display='none';
+  $('landing').style.display='flex';
+  state.dept=null; clearCard(); closeSearch();
+}
+function setMetalKind(k){
+  state.metalKind=k;
+  $('segEnds').classList.toggle('on',k==='ends');
+  $('segCans').classList.toggle('on',k==='cans');
+  $('scanLabel').textContent='Scan barcode';
+  clearCard(); closeSearch(); updateHints(); focusScan();
+}
+function updateHints(){
+  const list=activeList();
+  const withCode=list.filter(x=>x.code).length;
+  let t = `${list.length} items`;
+  if(state.dept==='metals' && state.metalKind==='cans'){
+    const nocode=list.length-withCode;
+    if(nocode>0) t += ` · ${nocode} have no barcode — use search`;
+  }
+  $('scanCountHint').textContent=t;
+}
+function focusScan(){ setTimeout(()=>$('scanInput').focus(),60); }
+
+/* ---- lookup / scan ---- */
+$('scanInput').addEventListener('keydown', e=>{
+  if(e.key==='Enter'){ e.preventDefault(); doScan(); }
+});
+function doScan(){
+  const raw=$('scanInput').value.trim();
+  if(!raw) return;
+  const it=activeIdx()[norm(raw)];
+  if(it){ selectItem(it); $('scanInput').value=''; }
+  else showNotFound(raw);
+}
+function showNotFound(code){
+  $('notFound').classList.remove('hide');
+  $('notFound').innerHTML=`<span>⚠</span><div><b>“${esc(code)}” not found</b> in ${state.dept==='plastics'?'Plastics':(state.metalKind)}.<br>Check the department/tab, or <span class="linkbtn" onclick="openSearchWith('${esc(code)}')">search by description</span>.</div>`;
+  clearCardOnly();
+}
+
+/* ---- search ---- */
+function toggleSearch(){ $('searchWrap').classList.contains('hide')?openSearch():closeSearch(); }
+function openSearch(){ $('searchWrap').classList.remove('hide'); $('searchToggle').textContent='Hide search'; setTimeout(()=>$('searchInput').focus(),40); }
+function openSearchWith(q){ openSearch(); $('searchInput').value=q; runSearch(); }
+function closeSearch(){ $('searchWrap').classList.add('hide'); $('searchToggle').textContent='Search by description'; $('results').classList.add('hide'); $('searchInput').value=''; }
+$('searchInput').addEventListener('input', runSearch);
+function runSearch(){
+  const q=norm($('searchInput').value);
+  const box=$('results');
+  if(q.length<1){ box.classList.add('hide'); return; }
+  const hits=activeList().filter(it=> norm(it.desc).includes(q) || norm(it.code).includes(q)).slice(0,40);
+  if(!hits.length){ box.innerHTML='<div class="empty">No matches</div>'; box.classList.remove('hide'); return; }
+  box.innerHTML=hits.map((it,i)=>`<div class="row" onclick="pickResult(${DATA[listKey()].indexOf(it)})">
+      <span class="code ${it.code?'':'nocode'}">${it.code?esc(it.code):'no barcode'}</span>
+      <span class="d">${esc(it.desc)}</span></div>`).join('');
+  box.classList.remove('hide');
+}
+function listKey(){ return state.dept==='plastics'?'plastics':(state.metalKind==='ends'?'ends':'cans'); }
+function pickResult(i){ const it=DATA[listKey()][i]; selectItem(it); closeSearch(); }
+
+/* ---- item card ---- */
+function selectItem(it){
+  $('notFound').classList.add('hide');
+  state.current=it;
+  const dept=state.dept, kind=state.metalKind;
+  const isPlastic=dept==='plastic'||dept==='plastics';
+  const perLabel = dept==='plastics' ? 'Per Pallet / Box' : 'Per Pallet';
+  const codeLabel = dept==='plastics' ? 'Item #' : (kind==='ends'?'Label Code':'Label Number');
+
+  const inputVal = v => v==='INPUT' ? '' : (v||'');
+  const inputPh  = v => v==='INPUT' ? 'enter value' : '';
+
+  let extraFields='';
+  if(dept==='metals' && kind==='ends'){
+    extraFields=`
+      <div class="fld"><label>Weight ${it.weight==='INPUT'?'<span class="tag">enter</span>':''}</label>
+        <input id="f_weight" class="mono" value="${esc(inputVal(it.weight))}" placeholder="${inputPh(it.weight)}"></div>
+      <div class="fld"><label>Type ${it.type==='INPUT'?'<span class="tag">enter</span>':''}</label>
+        <input id="f_type" class="mono" value="${esc(inputVal(it.type))}" placeholder="${inputPh(it.type)}"></div>`;
+  } else if(dept==='plastics'){
+    extraFields=`
+      <div class="fld full"><label>Type</label>
+        <input id="f_type" value="${esc(it.type||'')}"></div>`;
+  }
+
+  $('cardMount').innerHTML=`
+   <div class="card">
+    <div class="card-head">
+      <div class="code">${it.code?esc(it.code):'— no barcode —'}</div>
+      <div class="desc">${esc(it.desc)}</div>
+    </div>
+    <div class="card-body">
+      <div class="grid">
+        <div class="fld full"><label>${codeLabel}</label><input id="f_code" class="mono" value="${esc(it.code||'')}"></div>
+        <div class="fld full"><label>Description</label><input id="f_desc" value="${esc(it.desc)}"></div>
+        ${extraFields}
+        <div class="fld"><label>${perLabel}</label><input id="f_per" class="mono" inputmode="numeric" value="${it.perUnit??''}" oninput="calc()"></div>
+        <div class="fld"><label>Location</label><input id="f_loc" placeholder="e.g. Rack A-3"></div>
+
+        <div class="fld"><label>Full ${dept==='plastics'?'(pallets/boxes)':'(boxes)'}</label>
+          <input id="f_full" class="big" inputmode="numeric" value="0" oninput="calc()" onfocus="this.select()"></div>
+        <div class="fld"><label>Extra (loose)</label>
+          <input id="f_extra" class="big" inputmode="numeric" value="0" oninput="calc()" onfocus="this.select()"></div>
+
+        <div class="total-strip"><span class="lbl">Total count</span>
+          <span class="val"><span id="totalVal">0</span><small>units</small></span></div>
+      </div>
+    </div>
+    <div class="actions">
+      <button class="btn ghost" onclick="clearCard()">Cancel</button>
+      <button class="btn primary" onclick="saveEntry()">✓ Save entry</button>
+    </div>
+   </div>`;
+  calc();
+  setTimeout(()=>$('f_full').focus(),80);
+}
+function calc(){
+  if(!$('f_per')) return;
+  const per=asNum($('f_per').value), full=asNum($('f_full').value), extra=asNum($('f_extra').value);
+  const total=Math.round(full*per+extra);
+  $('totalVal').textContent=total.toLocaleString();
+}
+function clearCardOnly(){ $('cardMount').innerHTML=''; state.current=null; }
+function clearCard(){ clearCardOnly(); $('notFound').classList.add('hide'); focusScan(); }
+
+/* ---- save ---- */
+function saveEntry(){
+  const per=asNum($('f_per').value), full=asNum($('f_full').value), extra=asNum($('f_extra').value);
+  const total=Math.round(full*per+extra);
+  if(total<=0){ toast('Enter a count greater than 0','err'); return; }
+  const now=new Date();
+  const ts=now.getFullYear()+'-'+String(now.getMonth()+1).padStart(2,'0')+'-'+String(now.getDate()).padStart(2,'0')
+    +' '+String(now.getHours()).padStart(2,'0')+':'+String(now.getMinutes()).padStart(2,'0')+':'+String(now.getSeconds()).padStart(2,'0');
+  const counter=$('counterName').value.trim()||'—';
+  const entry={
+    ts, counter,
+    category: state.dept==='plastics'?'Plastics':(state.metalKind==='ends'?'Ends':'Cans'),
+    code:($('f_code')?.value||'').trim(),
+    desc:($('f_desc')?.value||'').trim(),
+    weight:($('f_weight')?.value||'').trim(),
+    type:($('f_type')?.value||'').trim(),
+    per, full, extra, total,
+    loc:($('f_loc')?.value||'').trim()
+  };
+  const btn = document.querySelector('.btn.primary');
+  if(btn){ btn.disabled=true; btn.textContent='Saving…'; }
+  callApi('appendEntry', [entry, state.dept])
+    .then(function(){
+      activeEntries().unshift(entry);
+      renderRecent();
+      toast('Saved · '+total.toLocaleString()+' units');
+      clearCardOnly();
+      focusScan();
+    })
+    .catch(function(err){
+      if(btn){ btn.disabled=false; btn.textContent='\u2713 Save entry'; }
+      toast('Save failed — try again','err');
+      console.error(err);
+    });
+}
+
+/* ---- recent list + export ---- */
+function renderRecent(){
+  const list=activeEntries();
+  $('sessCount').textContent=list.length;
+  $('exportBtn').classList.toggle('hide', list.length===0);
+  const el=$('recentList');
+  if(!list.length){ el.innerHTML='<div class="empty-recent">Scanned items will appear here after you save them.</div>'; return; }
+  el.innerHTML=list.map(e=>`<div class="entry">
+     <div class="info">
+       <div class="c">${esc(e.code||'no barcode')} · <span style="opacity:.7">${esc(e.category)}</span></div>
+       <div class="d">${esc(e.desc)}</div>
+       <div class="m">${e.full} full × ${e.per} + ${e.extra} · ${esc(e.loc||'no location')} · ${esc(e.counter)}</div>
+     </div>
+     <div class="qty">${e.total.toLocaleString()}<small>UNITS</small></div>
+   </div>`).join('');
+}
+function exportCSV(){
+  const list=activeEntries(); if(!list.length) return;
+  let header, rows;
+  if(state.dept==='plastics'){
+    header=['Timestamp','Counter','Item #','Description','Type','Per Unit','Full','Extra','Total','Location'];
+    rows=list.map(e=>[e.ts,e.counter,e.code,e.desc,e.type,e.per,e.full,e.extra,e.total,e.loc]);
+  }else{
+    header=['Timestamp','Counter','Category','Code','Description','Weight','Type','Per Unit','Full','Extra','Total','Location'];
+    rows=list.map(e=>[e.ts,e.counter,e.category,e.code,e.desc,e.weight,e.type,e.per,e.full,e.extra,e.total,e.loc]);
+  }
+  const csv=[header,...rows].map(r=>r.map(c=>{
+    const s=(c??'').toString(); return /[",\n]/.test(s)?'"'+s.replace(/"/g,'""')+'"':s;
+  }).join(',')).join('\n');
+  const blob=new Blob([csv],{type:'text/csv'});
+  const a=document.createElement('a');
+  a.href=URL.createObjectURL(blob);
+  a.download=(state.dept==='plastics'?'Plastics':'Metals')+'_count_'+new Date().toISOString().slice(0,10)+'.csv';
+  a.click();
+}
+
+
+/* ---- load lookup data from the Sheet on startup ---- */
+function onData(payload){
+  DATA = payload; buildIndex();
+  document.getElementById('landingFoot').textContent =
+    (DATA.ends.length+DATA.cans.length+DATA.plastics.length)+' items loaded · records save to your Google Sheet';
+}
+function onDataFail(err){
+  document.getElementById('landingFoot').textContent = 'Could not load item lists — reload the page.';
+  console.error(err);
+}
+callApi('getLookups', []).then(onData).catch(onDataFail);
+
+/* ---- toast ---- */
+let toastT;
+function toast(msg,type){
+  const t=$('toast'); t.textContent=msg; t.className='show'+(type==='err'?' err':'');
+  clearTimeout(toastT); toastT=setTimeout(()=>t.className='',1800);
+}
+</script>
+</body>
+</html>

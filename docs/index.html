@@ -314,7 +314,7 @@ var API_SECRET = '';
 
 /* Bump this on every page change — the number shows in the bottom-right corner so you can
    confirm a reload actually picked up the latest page (an old cached page has no tag). */
-var APP_VERSION = 'v12';
+var APP_VERSION = 'v13';
 
 /* Call a backend function: callApi('fn', [arg1, arg2]) -> Promise(result). */
 function callApi(fn, args){
@@ -373,14 +373,20 @@ const norm = s => (s||'').toString().trim().toUpperCase();
 const asNum = v => { const n = parseFloat(v); return isNaN(n)?0:n; };
 const esc = s => (s||'').toString().replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
 
-/* A "check value" is a placeholder the sheet uses where a value must be entered by hand,
-   e.g. "!!!ADD COLOR!!!", "ADD WEIGHT", "ADD TYPE", or "INPUT". Matched anywhere in the cell,
-   so decorations like !!! don't matter. */
-function isCheckValue(v){
-  const s = (v==null?'':String(v)).toUpperCase();
-  if(!s.trim()) return false;
-  return /\bINPUT\b/.test(s) || /\bADD\s+[A-Z]/.test(s);
+/* A check value marks a cell that needs a manual entry. The prompt text is whatever is wrapped
+   in !!! ... !!! (e.g. "!!!ADD COLOR!!!" -> "ADD COLOR", "!!!s-1 or 3? (1 or 3)!!!" ->
+   "s-1 or 3? (1 or 3)"). Bare "ADD X" / "INPUT" are also accepted.
+   Returns the prompt to show, or null if the cell is a normal value. */
+function checkPrompt(v){
+  const s = (v==null?'':String(v));
+  const m = /!!!\s*([\s\S]+?)\s*!!!/.exec(s);
+  if(m) return m[1].trim();
+  if(/\bINPUT\b/i.test(s)) return 'Enter value';
+  const a = /ADD\s+([A-Za-z]+)/i.exec(s);
+  if(a) return 'Add '+a[1].toLowerCase();
+  return null;
 }
+function isCheckValue(v){ return checkPrompt(v)!==null; }
 
 /* build code->item index per list */
 function indexOf(list){ const m={}; list.forEach(it=>{ if(it.code) m[norm(it.code)]=it; }); return m; }
@@ -500,25 +506,23 @@ function listKey(){ return state.dept==='plastics'?'plastics':(state.metalKind==
 function pickResult(i){ const it=DATA[listKey()][i]; closeSearch(); chooseItem(it); }
 
 /* ---- check values: prompt for manual entries, append them to the code ---- */
-// Turn a marker into a prompt label: "!!!ADD COLOR!!!" -> "color", "ADD WEIGHT" -> "weight".
-function markerLabel(v){
-  const m=/ADD\s+([A-Za-z]+)/i.exec(String(v||''));
-  return m ? m[1].toLowerCase() : 'value';
-}
 // Scan/pick entry point: resolve any check values first (via popup), then open the card.
 async function chooseItem(it){
-  const item = Object.assign({}, it);   // don't mutate the lookup row
+  let item = Object.assign({}, it);   // don't mutate the lookup row
   const keys = ['desc','weight','type']; // scan all of them; undefined fields are skipped
   for(let n=0;n<keys.length;n++){
     const key = keys[n];
-    if(!isCheckValue(item[key])) continue;
-    const label = markerLabel(item[key]);
-    const val = await askValue('Add '+label+'!', 'Enter the '+label+' for '+(item.code||'this item'));
+    const prompt = checkPrompt(item[key]);
+    if(prompt===null) continue;
+    const val = await askValue(prompt, 'This gets added to the code (scanned: '+(item.code||'')+')');
     if(val===null){ focusScan(); return; }                 // cancelled — abort this scan
     item.code = (item.code ? item.code+' ' : '') + val;     // append the entry to the code / barcode
     if(key==='weight' || key==='type') item[key]=val;       // put the value in its field
     else item[key]='';                                      // clear the marker text (e.g. description)
   }
+  // If the completed code matches a real lookup row (e.g. "243807 1"), use that row's full data.
+  const resolved = activeIdx()[norm(item.code)];
+  if(resolved) item = Object.assign({}, resolved);
   selectItem(item);
 }
 // A small modal that asks for one value. Resolves to the trimmed string, or null if cancelled.

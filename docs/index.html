@@ -186,6 +186,20 @@ input,select{font-family:inherit;font-size:16px}
 .buildtag{position:fixed;right:8px;bottom:6px;z-index:60;font-family:'JetBrains Mono',ui-monospace,monospace;
   font-size:10px;font-weight:600;letter-spacing:.06em;color:var(--ink-soft);opacity:.55;pointer-events:none}
 
+/* fields that still need a manual entry */
+.fld input.need{border-color:var(--metal-accent);background:#FFF8E6;box-shadow:0 0 0 3px rgba(232,162,26,.18)}
+
+/* check-value prompt modal */
+.modal{position:fixed;inset:0;z-index:80;background:rgba(20,26,31,.5);display:flex;align-items:center;justify-content:center;padding:20px}
+.modal-card{background:var(--panel);border-radius:var(--radius);width:100%;max-width:380px;padding:20px;box-shadow:0 24px 60px rgba(0,0,0,.35)}
+.modal-title{font-family:'Archivo';font-weight:900;font-size:22px;color:var(--dept);letter-spacing:-.01em}
+.modal-hint{color:var(--ink-soft);font-size:13px;margin:6px 0 14px}
+#modalInput{width:100%;height:var(--tap);border:2px solid var(--dept);border-radius:11px;background:#fff;padding:0 16px;
+  font-family:'JetBrains Mono';font-weight:700;font-size:22px;letter-spacing:.02em;color:var(--ink);outline:none}
+#modalInput:focus{box-shadow:0 0 0 4px var(--dept-soft)}
+.modal-actions{display:flex;gap:10px;margin-top:16px}
+.modal-actions .btn{height:52px}
+
 @media (min-width:560px){ .dept-card .sub{max-width:60%} }
 </style>
 </head>
@@ -277,6 +291,19 @@ input,select{font-family:inherit;font-size:16px}
 <div id="toast"></div>
 <div class="buildtag" id="buildTag"></div>
 
+<!-- prompt for manual check-value entries (Add weight!, Add type!, …) -->
+<div id="modal" class="modal hide">
+  <div class="modal-card">
+    <div class="modal-title" id="modalTitle"></div>
+    <div class="modal-hint" id="modalHint"></div>
+    <input id="modalInput" autocomplete="off" autocapitalize="characters" spellcheck="false" placeholder="enter value">
+    <div class="modal-actions">
+      <button class="btn ghost" id="modalCancel">Cancel</button>
+      <button class="btn primary" id="modalOk">Add</button>
+    </div>
+  </div>
+</div>
+
 <script>
 /* ====== Backend config ======
    This page is static (GitHub Pages). It talks to a Cloudflare Worker that reads/writes the
@@ -287,7 +314,7 @@ var API_SECRET = '';
 
 /* Bump this on every page change — the number shows in the bottom-right corner so you can
    confirm a reload actually picked up the latest page (an old cached page has no tag). */
-var APP_VERSION = 'v8';
+var APP_VERSION = 'v9';
 
 /* Call a backend function: callApi('fn', [arg1, arg2]) -> Promise(result). */
 function callApi(fn, args){
@@ -345,6 +372,14 @@ const $ = id => document.getElementById(id);
 const norm = s => (s||'').toString().trim().toUpperCase();
 const asNum = v => { const n = parseFloat(v); return isNaN(n)?0:n; };
 const esc = s => (s||'').toString().replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+
+/* A "check value" is a placeholder the sheet uses where a value must be entered by hand,
+   e.g. "ADD WEIGHT", "ADD TYPE", or "INPUT". Edit this if your markers differ. */
+function isCheckValue(v){
+  const s = (v==null?'':String(v)).trim().toUpperCase();
+  if(!s) return false;
+  return s==='INPUT' || s.indexOf('ADD ')===0;
+}
 
 /* build code->item index per list */
 function indexOf(list){ const m={}; list.forEach(it=>{ if(it.code) m[norm(it.code)]=it; }); return m; }
@@ -424,7 +459,7 @@ function doScan(){
   const raw=$('scanInput').value.trim();
   if(!raw) return;
   const it=activeIdx()[norm(raw)];
-  if(it){ selectItem(it); $('scanInput').value=''; }
+  if(it){ chooseItem(it); $('scanInput').value=''; }
   else showNotFound(raw);
 }
 function showNotFound(code){
@@ -456,7 +491,48 @@ function runSearch(){
   box.classList.remove('hide');
 }
 function listKey(){ return state.dept==='plastics'?'plastics':(state.metalKind==='ends'?'ends':'cans'); }
-function pickResult(i){ const it=DATA[listKey()][i]; selectItem(it); closeSearch(); }
+function pickResult(i){ const it=DATA[listKey()][i]; closeSearch(); chooseItem(it); }
+
+/* ---- check values: prompt for manual entries, append them to the code ---- */
+// Which fields on this item are check values that need a manual entry?
+function checkFieldsFor(it){
+  const out=[];
+  if(state.dept==='metals' && state.metalKind==='ends'){
+    if(isCheckValue(it.weight)) out.push({key:'weight', label:'weight'});
+    if(isCheckValue(it.type))   out.push({key:'type',   label:'type'});
+  } else if(state.dept==='plastics'){
+    if(isCheckValue(it.type))   out.push({key:'type',   label:'type'});
+  }
+  return out;
+}
+// Scan/pick entry point: resolve any check values first, then open the card.
+async function chooseItem(it){
+  const item = Object.assign({}, it);   // don't mutate the lookup row
+  const checks = checkFieldsFor(item);
+  for(let n=0;n<checks.length;n++){
+    const c = checks[n];
+    const val = await askValue('Add '+c.label+'!', 'Enter the '+c.label+' for '+ (item.code||item.desc||'this item'));
+    if(val===null){ focusScan(); return; }   // cancelled — abort this scan
+    item[c.key] = val;                                    // fill the real field value
+    item.code = (item.code ? item.code+' ' : '') + val;   // append to the code / barcode
+  }
+  selectItem(item);
+}
+// A small modal that asks for one value. Resolves to the trimmed string, or null if cancelled.
+function askValue(title, hint){
+  return new Promise(function(resolve){
+    const m=$('modal'), inp=$('modalInput');
+    $('modalTitle').textContent=title; $('modalHint').textContent=hint||''; inp.value='';
+    m.classList.remove('hide'); setTimeout(()=>inp.focus(),50);
+    function finish(v){ m.classList.add('hide'); $('modalOk').onclick=null; $('modalCancel').onclick=null; inp.onkeydown=null; resolve(v); }
+    $('modalOk').onclick=function(){ const v=inp.value.trim(); if(!v){ inp.focus(); return; } finish(v); };
+    $('modalCancel').onclick=function(){ finish(null); };
+    inp.onkeydown=function(e){
+      if(e.key==='Enter'){ e.preventDefault(); const v=inp.value.trim(); if(v) finish(v); }
+      else if(e.key==='Escape'){ finish(null); }
+    };
+  });
+}
 
 /* ---- edit / delete an existing entry ---- */
 function editEntry(i){
@@ -496,8 +572,8 @@ function selectItem(it, edit){
   const perLabel = dept==='plastics' ? 'Per Pallet / Box' : 'Per Pallet';
   const codeLabel = dept==='plastics' ? 'Item #' : (kind==='ends'?'Label Code':'Label Number');
 
-  const inputVal = v => v==='INPUT' ? '' : (v||'');
-  const inputPh  = v => v==='INPUT' ? 'enter value' : '';
+  const inputVal = v => isCheckValue(v) ? '' : (v||'');
+  const inputPh  = v => isCheckValue(v) ? 'enter value' : '';
 
   const vLoc  = ed ? esc(ed.loc||'') : '';
   const vFull = ed ? (Number(ed.full)||0) : 0;
@@ -509,14 +585,14 @@ function selectItem(it, edit){
   let extraFields='';
   if(dept==='metals' && kind==='ends'){
     extraFields=`
-      <div class="fld"><label>Weight ${it.weight==='INPUT'?'<span class="tag">enter</span>':''}</label>
-        <input id="f_weight" class="mono" value="${esc(inputVal(it.weight))}" placeholder="${inputPh(it.weight)}"></div>
-      <div class="fld"><label>Type ${it.type==='INPUT'?'<span class="tag">enter</span>':''}</label>
-        <input id="f_type" class="mono" value="${esc(inputVal(it.type))}" placeholder="${inputPh(it.type)}"></div>`;
+      <div class="fld"><label>Weight ${isCheckValue(it.weight)?'<span class="tag">enter</span>':''}</label>
+        <input id="f_weight" class="mono ${inputVal(it.weight)?'':'need'}" value="${esc(inputVal(it.weight))}" placeholder="${inputPh(it.weight)||'enter weight'}" oninput="this.classList.toggle('need', !this.value.trim())"></div>
+      <div class="fld"><label>Type ${isCheckValue(it.type)?'<span class="tag">enter</span>':''}</label>
+        <input id="f_type" class="mono ${inputVal(it.type)?'':'need'}" value="${esc(inputVal(it.type))}" placeholder="${inputPh(it.type)||'enter type'}" oninput="this.classList.toggle('need', !this.value.trim())"></div>`;
   } else if(dept==='plastics'){
     extraFields=`
-      <div class="fld full"><label>Type</label>
-        <input id="f_type" value="${esc(it.type||'')}"></div>`;
+      <div class="fld full"><label>Type ${isCheckValue(it.type)?'<span class="tag">enter</span>':''}</label>
+        <input id="f_type" class="${inputVal(it.type)?'':'need'}" value="${esc(inputVal(it.type))}" placeholder="enter type" oninput="this.classList.toggle('need', !this.value.trim())"></div>`;
   }
 
   $('cardMount').innerHTML=`

@@ -314,7 +314,7 @@ var API_SECRET = '';
 
 /* Bump this on every page change — the number shows in the bottom-right corner so you can
    confirm a reload actually picked up the latest page (an old cached page has no tag). */
-var APP_VERSION = 'v11';
+var APP_VERSION = 'v12';
 
 /* Call a backend function: callApi('fn', [arg1, arg2]) -> Promise(result). */
 function callApi(fn, args){
@@ -374,11 +374,12 @@ const asNum = v => { const n = parseFloat(v); return isNaN(n)?0:n; };
 const esc = s => (s||'').toString().replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
 
 /* A "check value" is a placeholder the sheet uses where a value must be entered by hand,
-   e.g. "ADD WEIGHT", "ADD TYPE", or "INPUT". Edit this if your markers differ. */
+   e.g. "!!!ADD COLOR!!!", "ADD WEIGHT", "ADD TYPE", or "INPUT". Matched anywhere in the cell,
+   so decorations like !!! don't matter. */
 function isCheckValue(v){
-  const s = (v==null?'':String(v)).trim().toUpperCase();
-  if(!s) return false;
-  return s==='INPUT' || s.indexOf('ADD ')===0;
+  const s = (v==null?'':String(v)).toUpperCase();
+  if(!s.trim()) return false;
+  return /\bINPUT\b/.test(s) || /\bADD\s+[A-Z]/.test(s);
 }
 
 /* build code->item index per list */
@@ -499,11 +500,10 @@ function listKey(){ return state.dept==='plastics'?'plastics':(state.metalKind==
 function pickResult(i){ const it=DATA[listKey()][i]; closeSearch(); chooseItem(it); }
 
 /* ---- check values: prompt for manual entries, append them to the code ---- */
-// Turn a marker into a prompt label: "ADD WEIGHT" -> "weight", "INPUT" -> "value".
+// Turn a marker into a prompt label: "!!!ADD COLOR!!!" -> "color", "ADD WEIGHT" -> "weight".
 function markerLabel(v){
-  const s=(v==null?'':String(v)).trim();
-  if(/^add\s+/i.test(s)) return s.replace(/^add\s+/i,'').trim().toLowerCase() || 'value';
-  return 'value';
+  const m=/ADD\s+([A-Za-z]+)/i.exec(String(v||''));
+  return m ? m[1].toLowerCase() : 'value';
 }
 // Scan/pick entry point: resolve any check values first (via popup), then open the card.
 async function chooseItem(it){

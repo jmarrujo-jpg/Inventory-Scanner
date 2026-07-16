@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-<title>Container Supply Inventory Count</title>
+<title>CSC Finished Goods Count</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Archivo:wght@500;600;700;800;900&family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@500;600;700&display=swap" rel="stylesheet">
@@ -35,9 +35,7 @@ input,select{font-family:inherit;font-size:16px}
 #landing{flex:1;display:flex;flex-direction:column;padding:26px 20px 22px}
 .brand{display:flex;align-items:center;gap:12px;margin-bottom:6px}
 .brand .dot{width:14px;height:14px;border-radius:3px;background:var(--metal-accent);box-shadow:3px 3px 0 var(--plastic-accent)}
-.brand .logo{position:relative;width:34px;height:30px;flex:none}
-.brand .logo img{position:absolute;inset:0;width:100%;height:100%;object-fit:contain;background:var(--paper)}
-.brand .logo svg{width:100%;height:100%}
+.brand .logo{width:auto;height:34px;max-width:120px;flex:none;object-fit:contain}
 .brand h1{font-family:'Archivo';font-weight:900;font-size:20px;letter-spacing:-.02em;margin:0}
 .brand span{color:var(--ink-soft);font-size:13px;font-weight:500}
 .tagline{color:var(--ink-soft);font-size:14px;margin:2px 0 26px 26px}
@@ -209,19 +207,9 @@ input,select{font-family:inherit;font-size:16px}
   <!-- LANDING -->
   <section id="landing">
     <div class="brand">
-      <span class="logo">
-        <!-- If docs/logo.png exists it shows the real logo; otherwise this SVG stand-in shows. -->
-        <img src="logo.png" alt="Container Supply" onerror="this.remove()">
-        <svg viewBox="0 0 120 100" aria-hidden="true" fill="#0A2148">
-          <ellipse cx="60" cy="12" rx="13" ry="6"/>
-          <ellipse cx="45" cy="23" rx="13" ry="6"/><ellipse cx="75" cy="23" rx="13" ry="6"/>
-          <ellipse cx="30" cy="34" rx="13" ry="6"/><ellipse cx="60" cy="34" rx="13" ry="6"/><ellipse cx="90" cy="34" rx="13" ry="6"/>
-          <ellipse cx="45" cy="45" rx="13" ry="6"/><ellipse cx="75" cy="45" rx="13" ry="6"/>
-          <ellipse cx="60" cy="56" rx="13" ry="6"/>
-          <path d="M4,64 L40,64 L40,72 L80,72 L80,64 L116,64 L60,99 Z"/>
-        </svg>
-      </span>
-      <h1>Container Supply Inventory Count</h1>
+      <!-- Shows docs/logo.png. Drop your logo file there (see below) and it appears here. -->
+      <img class="logo" src="logo.png" alt="CSC" onerror="this.style.display='none'">
+      <h1>CSC Finished Goods Count</h1>
     </div>
     <p class="tagline">Pick a department to start counting.</p>
     <div class="choose">
@@ -314,7 +302,7 @@ var API_SECRET = '';
 
 /* Bump this on every page change — the number shows in the bottom-right corner so you can
    confirm a reload actually picked up the latest page (an old cached page has no tag). */
-var APP_VERSION = 'v13';
+var APP_VERSION = 'v14';
 
 /* Call a backend function: callApi('fn', [arg1, arg2]) -> Promise(result). */
 function callApi(fn, args){

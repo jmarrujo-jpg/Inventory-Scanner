@@ -314,7 +314,7 @@ var API_SECRET = '';
 
 /* Bump this on every page change — the number shows in the bottom-right corner so you can
    confirm a reload actually picked up the latest page (an old cached page has no tag). */
-var APP_VERSION = 'v9';
+var APP_VERSION = 'v10';
 
 /* Call a backend function: callApi('fn', [arg1, arg2]) -> Promise(result). */
 function callApi(fn, args){
@@ -494,27 +494,31 @@ function listKey(){ return state.dept==='plastics'?'plastics':(state.metalKind==
 function pickResult(i){ const it=DATA[listKey()][i]; closeSearch(); chooseItem(it); }
 
 /* ---- check values: prompt for manual entries, append them to the code ---- */
-// Which fields on this item are check values that need a manual entry?
-function checkFieldsFor(it){
-  const out=[];
-  if(state.dept==='metals' && state.metalKind==='ends'){
-    if(isCheckValue(it.weight)) out.push({key:'weight', label:'weight'});
-    if(isCheckValue(it.type))   out.push({key:'type',   label:'type'});
-  } else if(state.dept==='plastics'){
-    if(isCheckValue(it.type))   out.push({key:'type',   label:'type'});
-  }
-  return out;
+// Turn a marker into a prompt label: "ADD WEIGHT" -> "weight", "INPUT" -> "value".
+function markerLabel(v){
+  const s=(v==null?'':String(v)).trim();
+  if(/^add\s+/i.test(s)) return s.replace(/^add\s+/i,'').trim().toLowerCase() || 'value';
+  return 'value';
 }
-// Scan/pick entry point: resolve any check values first, then open the card.
+// The fields a check value might live in, for the current department/kind.
+function checkKeysFor(){
+  if(state.dept==='plastics') return ['desc','type'];
+  if(state.metalKind==='ends') return ['desc','weight','type'];
+  return ['desc']; // cans has no weight/type column, so the marker is in the description
+}
+// Scan/pick entry point: resolve any check values first (via popup), then open the card.
 async function chooseItem(it){
   const item = Object.assign({}, it);   // don't mutate the lookup row
-  const checks = checkFieldsFor(item);
-  for(let n=0;n<checks.length;n++){
-    const c = checks[n];
-    const val = await askValue('Add '+c.label+'!', 'Enter the '+c.label+' for '+ (item.code||item.desc||'this item'));
-    if(val===null){ focusScan(); return; }   // cancelled — abort this scan
-    item[c.key] = val;                                    // fill the real field value
-    item.code = (item.code ? item.code+' ' : '') + val;   // append to the code / barcode
+  const keys = checkKeysFor();
+  for(let n=0;n<keys.length;n++){
+    const key = keys[n];
+    if(!isCheckValue(item[key])) continue;
+    const label = markerLabel(item[key]);
+    const val = await askValue('Add '+label+'!', 'Enter the '+label+' for '+(item.code||'this item'));
+    if(val===null){ focusScan(); return; }                 // cancelled — abort this scan
+    item.code = (item.code ? item.code+' ' : '') + val;     // append the entry to the code / barcode
+    if(key==='weight' || key==='type') item[key]=val;       // put the value in its field
+    else item[key]='';                                      // clear the marker text (e.g. description)
   }
   selectItem(item);
 }
@@ -585,14 +589,14 @@ function selectItem(it, edit){
   let extraFields='';
   if(dept==='metals' && kind==='ends'){
     extraFields=`
-      <div class="fld"><label>Weight ${isCheckValue(it.weight)?'<span class="tag">enter</span>':''}</label>
-        <input id="f_weight" class="mono ${inputVal(it.weight)?'':'need'}" value="${esc(inputVal(it.weight))}" placeholder="${inputPh(it.weight)||'enter weight'}" oninput="this.classList.toggle('need', !this.value.trim())"></div>
-      <div class="fld"><label>Type ${isCheckValue(it.type)?'<span class="tag">enter</span>':''}</label>
-        <input id="f_type" class="mono ${inputVal(it.type)?'':'need'}" value="${esc(inputVal(it.type))}" placeholder="${inputPh(it.type)||'enter type'}" oninput="this.classList.toggle('need', !this.value.trim())"></div>`;
+      <div class="fld"><label>Weight</label>
+        <input id="f_weight" class="mono" value="${esc(inputVal(it.weight))}" placeholder="${inputPh(it.weight)||'enter weight'}"></div>
+      <div class="fld"><label>Type</label>
+        <input id="f_type" class="mono" value="${esc(inputVal(it.type))}" placeholder="${inputPh(it.type)||'enter type'}"></div>`;
   } else if(dept==='plastics'){
     extraFields=`
-      <div class="fld full"><label>Type ${isCheckValue(it.type)?'<span class="tag">enter</span>':''}</label>
-        <input id="f_type" class="${inputVal(it.type)?'':'need'}" value="${esc(inputVal(it.type))}" placeholder="enter type" oninput="this.classList.toggle('need', !this.value.trim())"></div>`;
+      <div class="fld full"><label>Type</label>
+        <input id="f_type" value="${esc(inputVal(it.type))}" placeholder="enter type"></div>`;
   }
 
   $('cardMount').innerHTML=`

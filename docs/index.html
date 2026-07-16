@@ -314,7 +314,7 @@ var API_SECRET = '';
 
 /* Bump this on every page change — the number shows in the bottom-right corner so you can
    confirm a reload actually picked up the latest page (an old cached page has no tag). */
-var APP_VERSION = 'v10';
+var APP_VERSION = 'v11';
 
 /* Call a backend function: callApi('fn', [arg1, arg2]) -> Promise(result). */
 function callApi(fn, args){
@@ -420,6 +420,11 @@ function openDept(dept){
   document.documentElement.style.setProperty('--dept-soft', dept==='plastics'?'var(--plastic-soft)':'var(--metal-soft)');
   $('deptTitle').textContent = dept==='plastics'?'Plastics':'Metals';
   $('metalSeg').classList.toggle('hide', dept==='plastics');
+  if(dept==='metals'){                 // always start Metals on the Ends sub-tab, buttons in sync
+    state.metalKind='ends';
+    $('segEnds').classList.add('on');
+    $('segCans').classList.remove('on');
+  }
   $('scanLabel').textContent = dept==='plastics'?'Scan item number':'Scan barcode';
   $('landing').style.display='none';
   $('count').style.display='flex';
@@ -500,16 +505,10 @@ function markerLabel(v){
   if(/^add\s+/i.test(s)) return s.replace(/^add\s+/i,'').trim().toLowerCase() || 'value';
   return 'value';
 }
-// The fields a check value might live in, for the current department/kind.
-function checkKeysFor(){
-  if(state.dept==='plastics') return ['desc','type'];
-  if(state.metalKind==='ends') return ['desc','weight','type'];
-  return ['desc']; // cans has no weight/type column, so the marker is in the description
-}
 // Scan/pick entry point: resolve any check values first (via popup), then open the card.
 async function chooseItem(it){
   const item = Object.assign({}, it);   // don't mutate the lookup row
-  const keys = checkKeysFor();
+  const keys = ['desc','weight','type']; // scan all of them; undefined fields are skipped
   for(let n=0;n<keys.length;n++){
     const key = keys[n];
     if(!isCheckValue(item[key])) continue;

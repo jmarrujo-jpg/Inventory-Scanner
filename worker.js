@@ -50,7 +50,7 @@ export default {
       new Response(JSON.stringify(obj), { status, headers: { ...cors, 'Content-Type': 'application/json' } });
 
     if (request.method === 'OPTIONS') return new Response(null, { status: 204, headers: cors });
-    if (request.method === 'GET') return json({ ok: true, service: 'inventory-count-api', build: 'v5' }, 200);
+    if (request.method === 'GET') return json({ ok: true, service: 'inventory-count-api', build: 'v6' }, 200);
     if (request.method !== 'POST') return json({ ok: false, error: 'Method not allowed' }, 405);
 
     let payload;
@@ -77,6 +77,8 @@ async function handle(fn, args, env) {
     case 'getLookups': return getLookups(sheets);
     case 'appendEntry': return appendEntry(sheets, args[0], args[1]);
     case 'getEntries': return getEntries(sheets);
+    case 'updateEntry': return updateEntry(sheets, args[0]);
+    case 'deleteEntry': return deleteEntry(sheets, args[0]);
     default:
       throw new Error('Unknown function: ' + fn);
   }
@@ -171,6 +173,8 @@ async function readTabEntries(sheets, tab, category) {
     const r = values[n] || [];
     if (!r.some((c) => c !== '' && c !== null && c !== undefined)) continue; // skip blank rows
     out.push({
+      __tab: tab,
+      __row: n + 1, // 1-based sheet row (row 1 is the header)
       ts: String(cell(r, 'Timestamp') || ''),
       counter: String(cell(r, 'Counter') || ''),
       category,
@@ -186,6 +190,29 @@ async function readTabEntries(sheets, tab, category) {
     });
   }
   return out;
+}
+
+// Build the row array for a tab (same column order as append).
+function rowForTab(tab, e) {
+  if (tab === TAB.plasticsOut) return [e.ts, e.counter, e.code, e.desc, e.type, e.per, e.full, e.extra, e.loc, e.total];
+  if (tab === TAB.cansOut) return [e.ts, e.counter, e.code, e.desc, e.per, e.full, e.extra, e.loc, e.total];
+  return [e.ts, e.counter, e.code, e.desc, e.weight, e.type, e.per, e.full, e.extra, e.loc, e.total]; // Ends
+}
+// Overwrite an existing row in place (identified by __tab + __row).
+async function updateEntry(sheets, e) {
+  e = e || {};
+  if (!e.__tab || !e.__row) throw new Error('Missing row reference for update');
+  await sheets.update(e.__tab + '!A' + e.__row, [rowForTab(e.__tab, e)]);
+  return true;
+}
+// Delete a row entirely (identified by __tab + __row).
+async function deleteEntry(sheets, ref) {
+  ref = ref || {};
+  if (!ref.__tab || !ref.__row) throw new Error('Missing row reference for delete');
+  const sheetId = await sheets.sheetId(ref.__tab);
+  if (sheetId == null) throw new Error('Tab not found: ' + ref.__tab);
+  await sheets.deleteRow(sheetId, ref.__row);
+  return true;
 }
 
 // ---------------- Google auth + Sheets ----------------
@@ -253,6 +280,24 @@ async function makeSheets(env) {
     async append(tab, row) {
       return call(base + '/values/' + encodeURIComponent(tab) + ':append?valueInputOption=RAW&insertDataOption=INSERT_ROWS',
         { method: 'POST', headers: { ...auth, 'Content-Type': 'application/json' }, body: JSON.stringify({ values: [row] }) });
+    },
+    // Overwrite values starting at a range (e.g. "Cans!A5").
+    async update(rangeA1, values) {
+      return call(base + '/values/' + encodeURIComponent(rangeA1) + '?valueInputOption=RAW',
+        { method: 'PUT', headers: { ...auth, 'Content-Type': 'application/json' }, body: JSON.stringify({ values }) });
+    },
+    // Resolve a tab's numeric sheetId (needed to delete a row).
+    async sheetId(title) {
+      const meta = await call(base + '?fields=sheets.properties(title,sheetId)', { headers: auth });
+      const s = (meta.sheets || []).find((x) => x.properties && x.properties.title === title);
+      return s ? s.properties.sheetId : null;
+    },
+    // Delete a single row (1-based) from a tab, shifting rows below it up.
+    async deleteRow(sheetId, row1Based) {
+      return call(base + ':batchUpdate',
+        { method: 'POST', headers: { ...auth, 'Content-Type': 'application/json' },
+          body: JSON.stringify({ requests: [{ deleteDimension: { range: {
+            sheetId, dimension: 'ROWS', startIndex: row1Based - 1, endIndex: row1Based } } }] }) });
     },
     // Read every value in a tab (including the header row).
     async readAll(tab) {

@@ -35,6 +35,9 @@ input,select{font-family:inherit;font-size:16px}
 #landing{flex:1;display:flex;flex-direction:column;padding:26px 20px 22px}
 .brand{display:flex;align-items:center;gap:12px;margin-bottom:6px}
 .brand .dot{width:14px;height:14px;border-radius:3px;background:var(--metal-accent);box-shadow:3px 3px 0 var(--plastic-accent)}
+.brand .logo{position:relative;width:34px;height:30px;flex:none}
+.brand .logo img{position:absolute;inset:0;width:100%;height:100%;object-fit:contain;background:var(--paper)}
+.brand .logo svg{width:100%;height:100%}
 .brand h1{font-family:'Archivo';font-weight:900;font-size:20px;letter-spacing:-.02em;margin:0}
 .brand span{color:var(--ink-soft);font-size:13px;font-weight:500}
 .tagline{color:var(--ink-soft);font-size:14px;margin:2px 0 26px 26px}
@@ -92,7 +95,7 @@ input,select{font-family:inherit;font-size:16px}
   padding:0 16px 0 40px;font-family:'JetBrains Mono';font-weight:700;font-size:22px;letter-spacing:.02em;color:var(--ink);outline:none}
 #scanInput:focus{box-shadow:0 0 0 4px var(--dept-soft)}
 .scan-hint{margin-top:8px;font-size:13px;color:var(--ink-soft);display:flex;justify-content:space-between;align-items:center;gap:10px}
-.linkbtn{color:var(--dept);font-weight:700;font-size:13px;text-decoration:underline;text-underline-offset:2px}
+.linkbtn{color:var(--dept);font-weight:700;font-size:13px;text-decoration:underline;text-underline-offset:2px;cursor:pointer}
 
 /* search dropdown */
 .search-wrap{position:relative}
@@ -100,7 +103,7 @@ input,select{font-family:inherit;font-size:16px}
 #searchInput:focus{border-color:var(--dept)}
 .results{position:absolute;left:0;right:0;top:56px;z-index:9;background:#fff;border:1px solid var(--line);
   border-radius:12px;box-shadow:0 16px 34px rgba(20,26,31,.18);max-height:44vh;overflow:auto}
-.results .row{padding:12px 14px;border-bottom:1px solid var(--line);display:flex;flex-direction:column;gap:2px}
+.results .row{padding:12px 14px;border-bottom:1px solid var(--line);display:flex;flex-direction:column;gap:2px;cursor:pointer}
 .results .row:last-child{border-bottom:none}
 .results .row:active{background:var(--dept-soft)}
 .results .row .code{font-family:'JetBrains Mono';font-weight:700;font-size:13px;color:var(--dept)}
@@ -150,7 +153,7 @@ input,select{font-family:inherit;font-size:16px}
 .recent h3{font-size:13px;font-weight:700;color:var(--ink-soft);letter-spacing:.04em;text-transform:uppercase;
   display:flex;justify-content:space-between;align-items:center;margin:4px 2px 10px}
 .recent h3 .acts{display:flex;gap:14px}
-.recent h3 .exp{color:var(--dept);text-decoration:underline;text-underline-offset:2px;font-size:12px}
+.recent h3 .exp{color:var(--dept);text-decoration:underline;text-underline-offset:2px;font-size:12px;cursor:pointer}
 .entry{background:var(--panel);border:1px solid var(--line);border-radius:11px;padding:11px 13px;margin-bottom:8px;
   display:flex;align-items:center;gap:12px}
 .entry .info{flex:1;min-width:0}
@@ -160,6 +163,13 @@ input,select{font-family:inherit;font-size:16px}
 .entry .info .loc{font-size:12px;color:var(--dept);font-weight:700;margin-top:3px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .entry .qty{font-family:'JetBrains Mono';font-weight:800;font-size:18px;text-align:right;flex:none}
 .entry .qty small{display:block;font-size:9px;color:var(--ink-soft);letter-spacing:.08em}
+.entry .editbtn{flex:none;width:40px;height:40px;border-radius:9px;background:var(--dept-soft);color:var(--dept);
+  font-size:17px;display:grid;place-items:center;cursor:pointer}
+.entry .editbtn:active{filter:brightness(.94)}
+.btn.danger{background:transparent;border:1.5px solid #E4B4AB;color:var(--danger);flex:0 0 auto;padding:0 16px}
+.cardDel{position:absolute;top:12px;right:14px;background:rgba(255,255,255,.16);color:#fff;font-weight:700;
+  font-size:13px;padding:6px 12px;border-radius:8px;cursor:pointer}
+.card-head{position:relative}
 .empty-recent{color:var(--ink-soft);font-size:14px;text-align:center;padding:24px 0;border:1px dashed var(--line);border-radius:12px}
 
 /* toast */
@@ -185,7 +195,18 @@ input,select{font-family:inherit;font-size:16px}
   <!-- LANDING -->
   <section id="landing">
     <div class="brand">
-      <div class="dot"></div>
+      <span class="logo">
+        <!-- If docs/logo.png exists it shows the real logo; otherwise this SVG stand-in shows. -->
+        <img src="logo.png" alt="Container Supply" onerror="this.remove()">
+        <svg viewBox="0 0 120 100" aria-hidden="true" fill="#0A2148">
+          <ellipse cx="60" cy="12" rx="13" ry="6"/>
+          <ellipse cx="45" cy="23" rx="13" ry="6"/><ellipse cx="75" cy="23" rx="13" ry="6"/>
+          <ellipse cx="30" cy="34" rx="13" ry="6"/><ellipse cx="60" cy="34" rx="13" ry="6"/><ellipse cx="90" cy="34" rx="13" ry="6"/>
+          <ellipse cx="45" cy="45" rx="13" ry="6"/><ellipse cx="75" cy="45" rx="13" ry="6"/>
+          <ellipse cx="60" cy="56" rx="13" ry="6"/>
+          <path d="M4,64 L40,64 L40,72 L80,72 L80,64 L116,64 L60,99 Z"/>
+        </svg>
+      </span>
       <h1>Container Supply Inventory Count</h1>
     </div>
     <p class="tagline">Pick a department to start counting.</p>
@@ -266,7 +287,7 @@ var API_SECRET = '';
 
 /* Bump this on every page change — the number shows in the bottom-right corner so you can
    confirm a reload actually picked up the latest page (an old cached page has no tag). */
-var APP_VERSION = 'v7';
+var APP_VERSION = 'v8';
 
 /* Call a backend function: callApi('fn', [arg1, arg2]) -> Promise(result). */
 function callApi(fn, args){
@@ -437,10 +458,39 @@ function runSearch(){
 function listKey(){ return state.dept==='plastics'?'plastics':(state.metalKind==='ends'?'ends':'cans'); }
 function pickResult(i){ const it=DATA[listKey()][i]; selectItem(it); closeSearch(); }
 
+/* ---- edit / delete an existing entry ---- */
+function editEntry(i){
+  const e = activeEntries()[i];
+  if(!e) return;
+  $('notFound').classList.add('hide');
+  closeSearch();
+  if(state.dept==='metals') setMetalKind(e.category==='Ends'?'ends':'cans'); // show the right fields
+  const it = { code:e.code, desc:e.desc, weight:e.weight, type:e.type, perUnit:e.per };
+  selectItem(it, {index:i});
+  setTimeout(()=>{ const c=$('cardMount'); if(c) c.scrollIntoView({behavior:'smooth',block:'center'}); }, 60);
+}
+function deleteEntry(){
+  if(state.editIndex==null) return;
+  const ref = activeEntries()[state.editIndex];
+  if(!ref) return;
+  if(!confirm('Delete this entry?\n\n'+(ref.desc||ref.code||'')+'  ·  '+(Number(ref.total)||0).toLocaleString()+' units\n\nThis removes the row from the Google Sheet.')) return;
+  const del=document.querySelector('.cardDel'); if(del) del.textContent='Deleting…';
+  callApi('deleteEntry', [{__tab:ref.__tab, __row:ref.__row}])
+    .then(function(){
+      toast('Entry deleted');
+      state.editIndex=null; clearCardOnly();
+      refreshEntries();   // rows shift after a delete — re-read fresh row numbers
+      focusScan();
+    })
+    .catch(function(err){ if(del) del.textContent='Delete'; toast('Delete failed — try again','err'); console.error(err); });
+}
+
 /* ---- item card ---- */
-function selectItem(it){
+function selectItem(it, edit){
   $('notFound').classList.add('hide');
   state.current=it;
+  state.editIndex = edit ? edit.index : null;
+  const ed = state.editIndex!=null ? (activeEntries()[state.editIndex]||null) : null;
   const dept=state.dept, kind=state.metalKind;
   const isPlastic=dept==='plastic'||dept==='plastics';
   const perLabel = dept==='plastics' ? 'Per Pallet / Box' : 'Per Pallet';
@@ -449,7 +499,11 @@ function selectItem(it){
   const inputVal = v => v==='INPUT' ? '' : (v||'');
   const inputPh  = v => v==='INPUT' ? 'enter value' : '';
 
-  const t = sessionTallyMap()[itemKey(it)];
+  const vLoc  = ed ? esc(ed.loc||'') : '';
+  const vFull = ed ? (Number(ed.full)||0) : 0;
+  const vExtra= ed ? (Number(ed.extra)||0) : 0;
+
+  const t = ed ? null : sessionTallyMap()[itemKey(it)]; // don't show the "already counted" note while editing
   const prior = t ? `<div class="prior">Already counted this session: <b>${t.units.toLocaleString()}</b> units${t.loc?(' · last location '+esc(t.loc)):''}</div>` : '';
 
   let extraFields='';
@@ -468,6 +522,7 @@ function selectItem(it){
   $('cardMount').innerHTML=`
    <div class="card">
     <div class="card-head">
+      ${ed?`<button class="cardDel" onclick="deleteEntry()">Delete</button>`:''}
       <div class="code">${it.code?esc(it.code):'— no barcode —'}</div>
       <div class="desc">${esc(it.desc)}</div>
     </div>
@@ -478,12 +533,12 @@ function selectItem(it){
         <div class="fld full"><label>Description</label><input id="f_desc" value="${esc(it.desc)}"></div>
         ${extraFields}
         <div class="fld"><label>${perLabel}</label><input id="f_per" class="mono" inputmode="numeric" value="${it.perUnit??''}" oninput="calc()"></div>
-        <div class="fld"><label>Location</label><input id="f_loc" placeholder="e.g. Rack A-3"></div>
+        <div class="fld"><label>Location</label><input id="f_loc" placeholder="e.g. Rack A-3" value="${vLoc}"></div>
 
         <div class="fld"><label>Full ${dept==='plastics'?'(pallets/boxes)':'(boxes)'}</label>
-          <input id="f_full" class="big" inputmode="numeric" value="0" oninput="calc()" onfocus="this.select()"></div>
+          <input id="f_full" class="big" inputmode="numeric" value="${vFull}" oninput="calc()" onfocus="this.select()"></div>
         <div class="fld"><label>Extra (loose)</label>
-          <input id="f_extra" class="big" inputmode="numeric" value="0" oninput="calc()" onfocus="this.select()"></div>
+          <input id="f_extra" class="big" inputmode="numeric" value="${vExtra}" oninput="calc()" onfocus="this.select()"></div>
 
         <div class="total-strip"><span class="lbl">Total count</span>
           <span class="val"><span id="totalVal">0</span><small>units</small></span></div>
@@ -491,7 +546,7 @@ function selectItem(it){
     </div>
     <div class="actions">
       <button class="btn ghost" onclick="clearCard()">Cancel</button>
-      <button class="btn primary" onclick="saveEntry()">✓ Save entry</button>
+      <button class="btn primary" onclick="saveEntry()">${ed?'✓ Update':'✓ Save entry'}</button>
     </div>
    </div>`;
   calc();
@@ -503,7 +558,7 @@ function calc(){
   const total=Math.round(full*per+extra);
   $('totalVal').textContent=total.toLocaleString();
 }
-function clearCardOnly(){ $('cardMount').innerHTML=''; state.current=null; }
+function clearCardOnly(){ $('cardMount').innerHTML=''; state.current=null; state.editIndex=null; }
 function clearCard(){ clearCardOnly(); $('notFound').classList.add('hide'); focusScan(); }
 
 /* ---- save ---- */
@@ -515,9 +570,12 @@ function saveEntry(){
   const ts=now.getFullYear()+'-'+String(now.getMonth()+1).padStart(2,'0')+'-'+String(now.getDate()).padStart(2,'0')
     +' '+String(now.getHours()).padStart(2,'0')+':'+String(now.getMinutes()).padStart(2,'0')+':'+String(now.getSeconds()).padStart(2,'0');
   const counter=$('counterName').value.trim()||'—';
+  const editing = state.editIndex!=null;
+  const ref = editing ? activeEntries()[state.editIndex] : null;
   const entry={
-    ts, counter,
-    category: state.dept==='plastics'?'Plastics':(state.metalKind==='ends'?'Ends':'Cans'),
+    ts: (editing && ref) ? ref.ts : ts,
+    counter,
+    category: (editing && ref) ? ref.category : (state.dept==='plastics'?'Plastics':(state.metalKind==='ends'?'Ends':'Cans')),
     code:($('f_code')?.value||'').trim(),
     desc:($('f_desc')?.value||'').trim(),
     weight:($('f_weight')?.value||'').trim(),
@@ -525,10 +583,18 @@ function saveEntry(){
     per, full, extra, total,
     loc:($('f_loc')?.value||'').trim()
   };
+  if(editing && ref){ entry.__tab=ref.__tab; entry.__row=ref.__row; }
   const btn = document.querySelector('.btn.primary');
   if(btn){ btn.disabled=true; btn.textContent='Saving…'; }
-  callApi('appendEntry', [entry, state.dept])
+  const fn = editing ? 'updateEntry' : 'appendEntry';
+  const apiArgs = editing ? [entry] : [entry, state.dept];
+  callApi(fn, apiArgs)
     .then(function(){
+      if(editing){
+        clearCardOnly(); refreshEntries(); focusScan();
+        toast('Updated '+total.toLocaleString()+' units');
+        return;
+      }
       activeEntries().unshift(entry);
       persistSession();
       renderRecent();
@@ -573,14 +639,15 @@ function renderRecent(){
   $('exportBtn').classList.toggle('hide', list.length===0);
   const el=$('recentList');
   if(!list.length){ el.innerHTML='<div class="empty-recent">Scanned items will appear here after you save them.</div>'; return; }
-  el.innerHTML=list.map(e=>`<div class="entry">
+  el.innerHTML=list.map((e,i)=>`<div class="entry">
      <div class="info">
        <div class="c">${esc(e.code||'no barcode')} · <span style="opacity:.7">${esc(e.category)}</span></div>
        <div class="d">${esc(e.desc)}</div>
        <div class="m">${e.full} full × ${e.per} + ${e.extra} loose · ${esc(e.counter)}</div>
        <div class="loc">📍 ${esc(e.loc||'no location')}</div>
      </div>
-     <div class="qty">${e.total.toLocaleString()}<small>UNITS</small></div>
+     <div class="qty">${(Number(e.total)||0).toLocaleString()}<small>UNITS</small></div>
+     <button class="editbtn" onclick="editEntry(${i})" aria-label="Edit entry">✎</button>
    </div>`).join('');
 }
 function clearSession(){

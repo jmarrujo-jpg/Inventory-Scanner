@@ -132,6 +132,15 @@ input,select{font-family:inherit;font-size:16px}
 .fld input:focus{border-color:var(--dept);box-shadow:0 0 0 3px var(--dept-soft)}
 .fld input.mono{font-family:'JetBrains Mono';font-weight:600}
 .fld input.big{height:60px;font-size:24px;font-weight:700;text-align:center;font-family:'JetBrains Mono'}
+
+/* number box + on-screen advance button (mobile numeric keypads have no Enter key) */
+.biginput,.locrow{display:flex;gap:8px;align-items:stretch}
+.biginput input,.locrow input{flex:1;min-width:0}
+.locrow select{flex:0 0 108px;border:1.5px solid var(--line);border-radius:10px;background:#fff;padding:0 8px;font-size:15px;color:var(--ink);height:52px}
+.locrow select:focus{border-color:var(--dept);outline:none}
+.stepbtn{flex:0 0 58px;border-radius:10px;background:var(--dept);color:#fff;font-weight:800;font-size:20px;display:grid;place-items:center;cursor:pointer}
+.stepbtn:active{filter:brightness(.92)}
+.stepbtn.ok{background:var(--ok)}
 .fld input[readonly]{background:var(--dept-soft);border-color:transparent;color:var(--dept);font-weight:700}
 
 .total-strip{grid-column:1/-1;background:var(--dept);color:#fff;border-radius:11px;padding:12px 16px;
@@ -301,7 +310,7 @@ var API_SECRET = '';
 
 /* Bump this on every page change — the number shows in the bottom-right corner so you can
    confirm a reload actually picked up the latest page (an old cached page has no tag). */
-var APP_VERSION = 'v17';
+var APP_VERSION = 'v18';
 
 /* Call a backend function: callApi('fn', [arg1, arg2]) -> Promise(result). */
 function callApi(fn, args){
@@ -322,7 +331,28 @@ var DATA = {ends:[],cans:[],plastics:[]};
 </script>
 <script>
 /* ====== APP LOGIC ====== */
-const state = { dept:null, metalKind:'ends', entries:{metals:[], plastics:[]}, current:null };
+const state = { dept:null, metalKind:'ends', entries:{metals:[], plastics:[]}, current:null, building:'' };
+
+/* Buildings for the Location box: pick a building, type just the number.
+   Saved as LETTER-### (zero-padded to 3), e.g. Monarch + 3 -> "M-003", + 103 -> "M-103". */
+const BUILDINGS = [['M','Monarch'],['P','Plastics'],['MT','Metals'],['S','Shipping'],['H','Hitachi'],['W','Wyle']];
+// Compose the location from the building select + number box (also accepts typing "m03"/"mt12").
+function composeLoc(){
+  const sel = $('f_bldg') ? $('f_bldg').value : '';
+  const raw = ($('f_loc') && $('f_loc').value || '').trim();
+  const m = /^([A-Za-z]{1,2})[\s-]?(\d+)$/.exec(raw);   // allow "m03", "mt12" typed directly
+  let letter = sel, digits;
+  if(m){ letter = m[1].toUpperCase(); digits = m[2]; }
+  else { digits = raw.replace(/\D/g,''); }
+  if(!digits) return letter || '';
+  return (letter ? letter+'-' : '') + digits.padStart(3,'0');
+}
+// Split a stored "M-003" back into building + number for editing.
+function parseLoc(loc){
+  const m = /^([A-Za-z]{1,2})-?(\d+)$/.exec(String(loc||'').trim());
+  if(m) return { bldg:m[1].toUpperCase(), num:String(Number(m[2])) };
+  return { bldg:'', num:String(loc||'') };
+}
 
 /* ---- session persistence: entries survive closing/reopening the app ---- */
 const SESSION_KEY = 'invCountSession_v1';
@@ -332,7 +362,8 @@ function persistSession(){
       entries: state.entries,
       counter: $('counterName') ? $('counterName').value : '',
       lastDept: state.dept,
-      metalKind: state.metalKind
+      metalKind: state.metalKind,
+      building: state.building
     }));
   }catch(e){ /* storage disabled/full — just skip persisting */ }
 }
@@ -345,6 +376,7 @@ function loadSession(){
       state.entries.plastics = Array.isArray(s.entries.plastics) ? s.entries.plastics : [];
     }
     if(s.metalKind) state.metalKind = s.metalKind;
+    if(s.building) state.building = s.building;
     return s;
   }catch(e){ return null; }
 }
@@ -453,6 +485,19 @@ function focusScan(){ setTimeout(()=>$('scanInput').focus(),60); }
 /* ---- lookup / scan ---- */
 $('scanInput').addEventListener('keydown', e=>{
   if(e.key==='Enter'){ e.preventDefault(); doScan(); }
+});
+// Auto-open once the scanned/typed value matches a real code (no need to press Enter).
+// A short debounce lets a barcode scanner finish "typing" the whole code first. We only
+// open on an exact match, so a partial code while typing never shows a "not found" error.
+let scanTimer;
+$('scanInput').addEventListener('input', ()=>{
+  clearTimeout(scanTimer);
+  scanTimer=setTimeout(()=>{
+    const raw=$('scanInput').value.trim();
+    if(!raw) return;
+    const it=activeIdx()[norm(raw)];
+    if(it){ chooseItem(it); $('scanInput').value=''; }
+  }, 120);
 });
 function doScan(){
   const raw=$('scanInput').value.trim();
@@ -569,7 +614,12 @@ function selectItem(it, edit){
   const inputVal = v => isCheckValue(v) ? '' : (v||'');
   const inputPh  = v => isCheckValue(v) ? 'enter value' : '';
 
-  const vLoc  = ed ? esc(ed.loc||'') : '';
+  const locParts = ed ? parseLoc(ed.loc) : { bldg: state.building, num:'' };
+  const vBldg = locParts.bldg || state.building || '';
+  const vNum  = esc(locParts.num || '');
+  const bldgOpts = ['<option value="">—</option>'].concat(
+    BUILDINGS.map(b=>'<option value="'+b[0]+'"'+(b[0]===vBldg?' selected':'')+'>'+b[0]+' · '+b[1]+'</option>')
+  ).join('');
   const vFull = ed ? (Number(ed.full)||0) : 0;
   const vExtra= ed ? (Number(ed.extra)||0) : 0;
 
@@ -605,12 +655,22 @@ function selectItem(it, edit){
         <div class="fld full"><label>${perLabel}</label><input id="f_per" class="mono" inputmode="numeric" value="${it.perUnit??''}" oninput="calc()"></div>
 
         <div class="fld"><label>Full ${dept==='plastics'?'(pallets/boxes)':'(boxes)'}</label>
-          <input id="f_full" class="big" inputmode="numeric" value="${vFull}" oninput="calc()" onfocus="this.select()" onkeydown="cardEnter(event,'f_extra')"></div>
+          <div class="biginput">
+            <input id="f_full" class="big" inputmode="numeric" enterkeyhint="next" value="${vFull}" oninput="calc()" onfocus="this.select()" onkeydown="cardEnter(event,'f_extra')">
+            <button type="button" class="stepbtn" onclick="nextField('f_extra')" aria-label="Next box">⏎</button>
+          </div></div>
         <div class="fld"><label>Extra (loose)</label>
-          <input id="f_extra" class="big" inputmode="numeric" value="${vExtra}" oninput="calc()" onfocus="this.select()" onkeydown="cardEnter(event,'f_loc')"></div>
+          <div class="biginput">
+            <input id="f_extra" class="big" inputmode="numeric" enterkeyhint="next" value="${vExtra}" oninput="calc()" onfocus="this.select()" onkeydown="cardEnter(event,'f_loc')">
+            <button type="button" class="stepbtn" onclick="nextField('f_loc')" aria-label="Next box">⏎</button>
+          </div></div>
 
-        <div class="fld full"><label>Location</label>
-          <input id="f_loc" placeholder="e.g. Rack A-3" value="${vLoc}" onkeydown="cardEnter(event,'save')"></div>
+        <div class="fld full"><label>Location — building + number</label>
+          <div class="locrow">
+            <select id="f_bldg" onchange="state.building=this.value;persistSession()">${bldgOpts}</select>
+            <input id="f_loc" class="mono" inputmode="numeric" enterkeyhint="done" placeholder="number" value="${vNum}" onkeydown="cardEnter(event,'save')">
+            <button type="button" class="stepbtn ok" onclick="saveEntry()" aria-label="Save entry">✓</button>
+          </div></div>
 
         <div class="total-strip"><span class="lbl">Total count</span>
           <span class="val"><span id="totalVal">0</span><small>units</small></span></div>
@@ -622,7 +682,7 @@ function selectItem(it, edit){
     </div>
    </div>`;
   calc();
-  setTimeout(()=>$('f_full').focus(),80);
+  setTimeout(()=>{ const f=$('f_full'); if(f){ f.focus(); if(f.select) f.select(); f.scrollIntoView({block:'center',behavior:'smooth'}); } },80);
 }
 function calc(){
   if(!$('f_per')) return;
@@ -630,12 +690,14 @@ function calc(){
   const total=Math.round(full*per+extra);
   $('totalVal').textContent=total.toLocaleString();
 }
+/* Focus a box and scroll it into view (keeps it above the phone keyboard). */
+function nextField(id){ const el=$(id); if(el){ el.focus(); if(el.select) el.select(); el.scrollIntoView({block:'center',behavior:'smooth'}); } }
 /* Enter moves through the boxes: Full -> Extra -> Location -> save */
 function cardEnter(e, target){
   if(e.key!=='Enter') return;
   e.preventDefault();
   if(target==='save'){ saveEntry(); return; }
-  const el=$(target); if(el){ el.focus(); if(el.select) el.select(); }
+  nextField(target);
 }
 function clearCardOnly(){ $('cardMount').innerHTML=''; state.current=null; state.editIndex=null; }
 function clearCard(){ clearCardOnly(); $('notFound').classList.add('hide'); focusScan(); }
@@ -660,7 +722,7 @@ function saveEntry(){
     weight:($('f_weight')?.value||'').trim(),
     type:($('f_type')?.value||'').trim(),
     per, full, extra, total,
-    loc:($('f_loc')?.value||'').trim()
+    loc: composeLoc()
   };
   if(editing && ref){ entry.__tab=ref.__tab; entry.__row=ref.__row; }
   const btn = document.querySelector('.btn.primary');

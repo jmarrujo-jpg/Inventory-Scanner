@@ -82,6 +82,12 @@ input,select{font-family:inherit;font-size:16px}
 .seg button{flex:1;padding:12px;border-radius:9px;font-weight:700;font-size:15px;color:var(--ink-soft)}
 .seg button.on{background:var(--dept);color:#fff}
 
+/* "building you're in" bar above the scanner */
+.bldgbar{display:flex;align-items:center;gap:10px;background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:10px 12px}
+.bldgbar .bldglbl{font-size:12px;font-weight:700;color:var(--ink-soft);letter-spacing:.02em;text-transform:uppercase;white-space:nowrap}
+.bldgbar select{flex:1;height:48px;border:1.5px solid var(--line);border-radius:10px;background:#fff;padding:0 12px;font-size:16px;font-weight:700;color:var(--dept)}
+.bldgbar select:focus{border-color:var(--dept);outline:none}
+
 /* scan bay - signature element */
 .scanbay{background:var(--panel);border:1px solid var(--line);border-radius:var(--radius);padding:16px;
   box-shadow:0 2px 0 var(--line)}
@@ -254,6 +260,11 @@ input,select{font-family:inherit;font-size:16px}
         <button id="segCans" onclick="setMetalKind('cans')">Cans</button>
       </div>
 
+      <div class="bldgbar">
+        <span class="bldglbl">Building you're in</span>
+        <select id="topBldg" onchange="setBuilding(this.value)"></select>
+      </div>
+
       <div class="scanbay">
         <label id="scanLabel">Scan barcode</label>
         <div class="scan-input-wrap">
@@ -310,7 +321,7 @@ var API_SECRET = '';
 
 /* Bump this on every page change — the number shows in the bottom-right corner so you can
    confirm a reload actually picked up the latest page (an old cached page has no tag). */
-var APP_VERSION = 'v18';
+var APP_VERSION = 'v19';
 
 /* Call a backend function: callApi('fn', [arg1, arg2]) -> Promise(result). */
 function callApi(fn, args){
@@ -352,6 +363,27 @@ function parseLoc(loc){
   const m = /^([A-Za-z]{1,2})-?(\d+)$/.exec(String(loc||'').trim());
   if(m) return { bldg:m[1].toUpperCase(), num:String(Number(m[2])) };
   return { bldg:'', num:String(loc||'') };
+}
+// Fill the top "building you're in" dropdown and select the current building.
+function initBuildingSelect(){
+  const sel=$('topBldg'); if(!sel) return;
+  sel.innerHTML=['<option value="">— building —</option>'].concat(
+    BUILDINGS.map(b=>'<option value="'+b[0]+'">'+b[0]+' · '+b[1]+'</option>')
+  ).join('');
+  sel.value=state.building||'';
+}
+// Top dropdown changed: this is the building you're in; new scans auto-fill it.
+function setBuilding(v){
+  state.building=v; persistSession();
+  const top=$('topBldg'); if(top && top.value!==v) top.value=v;
+  if(state.editIndex==null){ const fb=$('f_bldg'); if(fb) fb.value=v; } // don't touch an entry being edited
+}
+// Card's location dropdown changed. For a NEW entry, keep the "building you're in" in sync;
+// while editing, only change this entry (don't move the current building).
+function onCardBldg(v){
+  if(state.editIndex!=null) return;
+  state.building=v; persistSession();
+  const top=$('topBldg'); if(top) top.value=v;
 }
 
 /* ---- session persistence: entries survive closing/reopening the app ---- */
@@ -454,6 +486,7 @@ function openDept(dept){
   $('scanLabel').textContent = dept==='plastics'?'Scan item number':'Scan barcode';
   $('landing').style.display='none';
   $('count').style.display='flex';
+  const tb=$('topBldg'); if(tb) tb.value=state.building||'';
   clearCard(); renderRecent(); updateHints();
   refreshEntries();   // pull the authoritative list from the sheet
   focusScan();
@@ -615,7 +648,7 @@ function selectItem(it, edit){
   const inputPh  = v => isCheckValue(v) ? 'enter value' : '';
 
   const locParts = ed ? parseLoc(ed.loc) : { bldg: state.building, num:'' };
-  const vBldg = locParts.bldg || state.building || '';
+  const vBldg = locParts.bldg;   // editing shows the entry's building; a new scan uses the current one
   const vNum  = esc(locParts.num || '');
   const bldgOpts = ['<option value="">—</option>'].concat(
     BUILDINGS.map(b=>'<option value="'+b[0]+'"'+(b[0]===vBldg?' selected':'')+'>'+b[0]+' · '+b[1]+'</option>')
@@ -667,7 +700,7 @@ function selectItem(it, edit){
 
         <div class="fld full"><label>Location — building + number</label>
           <div class="locrow">
-            <select id="f_bldg" onchange="state.building=this.value;persistSession()">${bldgOpts}</select>
+            <select id="f_bldg" onchange="onCardBldg(this.value)">${bldgOpts}</select>
             <input id="f_loc" class="mono" inputmode="numeric" enterkeyhint="done" placeholder="number" value="${vNum}" onkeydown="cardEnter(event,'save')">
             <button type="button" class="stepbtn ok" onclick="saveEntry()" aria-label="Save entry">✓</button>
           </div></div>
@@ -844,6 +877,7 @@ $('buildTag').textContent = APP_VERSION;
 /* ---- persist counter name + resume the saved session on open ---- */
 $('counterName').addEventListener('input', persistSession);
 restoreSession(loadSession());
+initBuildingSelect();
 </script>
 </body>
 </html>

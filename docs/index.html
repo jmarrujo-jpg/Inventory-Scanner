@@ -301,7 +301,7 @@ var API_SECRET = '';
 
 /* Bump this on every page change — the number shows in the bottom-right corner so you can
    confirm a reload actually picked up the latest page (an old cached page has no tag). */
-var APP_VERSION = 'v16';
+var APP_VERSION = 'v17';
 
 /* Call a backend function: callApi('fn', [arg1, arg2]) -> Promise(result). */
 function callApi(fn, args){
@@ -602,13 +602,15 @@ function selectItem(it, edit){
         <div class="fld full"><label>${codeLabel}</label><input id="f_code" class="mono" value="${esc(it.code||'')}"></div>
         <div class="fld full"><label>Description</label><input id="f_desc" value="${esc(it.desc)}"></div>
         ${extraFields}
-        <div class="fld"><label>${perLabel}</label><input id="f_per" class="mono" inputmode="numeric" value="${it.perUnit??''}" oninput="calc()"></div>
-        <div class="fld"><label>Location</label><input id="f_loc" placeholder="e.g. Rack A-3" value="${vLoc}"></div>
+        <div class="fld full"><label>${perLabel}</label><input id="f_per" class="mono" inputmode="numeric" value="${it.perUnit??''}" oninput="calc()"></div>
 
         <div class="fld"><label>Full ${dept==='plastics'?'(pallets/boxes)':'(boxes)'}</label>
-          <input id="f_full" class="big" inputmode="numeric" value="${vFull}" oninput="calc()" onfocus="this.select()"></div>
+          <input id="f_full" class="big" inputmode="numeric" value="${vFull}" oninput="calc()" onfocus="this.select()" onkeydown="cardEnter(event,'f_extra')"></div>
         <div class="fld"><label>Extra (loose)</label>
-          <input id="f_extra" class="big" inputmode="numeric" value="${vExtra}" oninput="calc()" onfocus="this.select()"></div>
+          <input id="f_extra" class="big" inputmode="numeric" value="${vExtra}" oninput="calc()" onfocus="this.select()" onkeydown="cardEnter(event,'f_loc')"></div>
+
+        <div class="fld full"><label>Location</label>
+          <input id="f_loc" placeholder="e.g. Rack A-3" value="${vLoc}" onkeydown="cardEnter(event,'save')"></div>
 
         <div class="total-strip"><span class="lbl">Total count</span>
           <span class="val"><span id="totalVal">0</span><small>units</small></span></div>
@@ -627,6 +629,13 @@ function calc(){
   const per=asNum($('f_per').value), full=asNum($('f_full').value), extra=asNum($('f_extra').value);
   const total=Math.round(full*per+extra);
   $('totalVal').textContent=total.toLocaleString();
+}
+/* Enter moves through the boxes: Full -> Extra -> Location -> save */
+function cardEnter(e, target){
+  if(e.key!=='Enter') return;
+  e.preventDefault();
+  if(target==='save'){ saveEntry(); return; }
+  const el=$(target); if(el){ el.focus(); if(el.select) el.select(); }
 }
 function clearCardOnly(){ $('cardMount').innerHTML=''; state.current=null; state.editIndex=null; }
 function clearCard(){ clearCardOnly(); $('notFound').classList.add('hide'); focusScan(); }

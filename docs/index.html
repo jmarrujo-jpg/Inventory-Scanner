@@ -288,7 +288,7 @@ input,select{font-family:inherit;font-size:16px}
       <div id="cardMount"></div>
 
       <div class="recent">
-        <h3>Counted so far <span class="acts"><span class="exp linkbtn" id="refreshBtn" onclick="refreshEntries()">Refresh</span><span class="exp linkbtn hide" id="exportBtn" onclick="exportCSV()">Download CSV</span></span></h3>
+        <h3>Counted so far</h3>
         <div id="recentList"><div class="empty-recent">Scanned items will appear here after you save them.</div></div>
       </div>
     </div>
@@ -321,7 +321,7 @@ var API_SECRET = '';
 
 /* Bump this on every page change — the number shows in the bottom-right corner so you can
    confirm a reload actually picked up the latest page (an old cached page has no tag). */
-var APP_VERSION = 'v19';
+var APP_VERSION = 'v20';
 
 /* Call a backend function: callApi('fn', [arg1, arg2]) -> Promise(result). */
 function callApi(fn, args){
@@ -810,7 +810,6 @@ function refreshEntries(){
 function renderRecent(){
   const list=activeEntries();
   $('sessCount').textContent=list.length;
-  $('exportBtn').classList.toggle('hide', list.length===0);
   const el=$('recentList');
   if(!list.length){ el.innerHTML='<div class="empty-recent">Scanned items will appear here after you save them.</div>'; return; }
   el.innerHTML=list.map((e,i)=>`<div class="entry">

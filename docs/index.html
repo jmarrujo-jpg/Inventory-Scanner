@@ -142,16 +142,24 @@ input,select{font-family:inherit;font-size:16px}
 .stepbtn:active{filter:brightness(.92)}
 .stepbtn.ok{background:var(--ok)}
 .fld input[readonly]{background:var(--dept-soft);border-color:transparent;color:var(--dept);font-weight:700}
-/* on-screen number pad on the card (iOS won't summon its keyboard on programmatic focus after a scan) */
-.keypad{grid-column:1/-1;margin:2px 0 12px;border-top:1px dashed var(--line);padding-top:12px}
-.kp-target{font-family:'JetBrains Mono';font-size:11px;letter-spacing:.12em;text-transform:uppercase;color:var(--ink-soft);margin-bottom:8px;text-align:center}
+/* docked number pad — slides up from the bottom like a native keyboard, only while a count box
+   (Full/Extra/Location) is active. iOS won't summon its own keyboard on the programmatic focus
+   after a scan, so those boxes use inputmode=none and this pad instead. */
+.keypad{position:fixed;left:0;right:0;bottom:0;z-index:75;background:#e9ebee;border-top:1px solid #c7ccd1;
+  padding:7px 8px calc(8px + env(safe-area-inset-bottom,0px));box-shadow:0 -8px 24px rgba(20,26,31,.16);
+  transform:translateY(115%);transition:transform .2s ease;will-change:transform}
+.keypad.show{transform:translateY(0)}
+.kp-target{font-family:'JetBrains Mono';font-size:11px;letter-spacing:.1em;text-transform:uppercase;color:var(--ink-soft);margin:2px 0 7px;text-align:center}
 .kp-target b{color:var(--dept)}
-.kp-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}
-.kp-grid button{height:58px;border:1.5px solid var(--line);border-radius:12px;background:#fff;color:var(--ink);
-  font-family:'JetBrains Mono';font-weight:800;font-size:24px;display:grid;place-items:center;cursor:pointer;-webkit-user-select:none;user-select:none;touch-action:manipulation}
+.kp-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:7px;max-width:460px;margin:0 auto}
+.kp-grid button{height:52px;border:1px solid #c7ccd1;border-radius:9px;background:#fff;color:var(--ink);
+  font-family:'JetBrains Mono';font-weight:800;font-size:23px;display:grid;place-items:center;cursor:pointer;
+  -webkit-user-select:none;user-select:none;touch-action:manipulation;box-shadow:0 1px 0 #b8bec4}
 .kp-grid button:active{background:var(--dept-soft);border-color:var(--dept)}
-.kp-grid button.kp-back{color:var(--ink-soft);font-size:22px}
-.kp-grid button.kp-go{background:var(--ok);border-color:var(--ok);color:#fff;font-size:20px}
+.kp-grid button.kp-back{color:var(--ink-soft);font-size:21px}
+.kp-grid button.kp-go{background:var(--ok);border-color:var(--ok);color:#fff;font-size:19px;box-shadow:none}
+/* leave room to scroll the active field above the docked pad */
+body.kp-open #count{padding-bottom:290px}
 
 .total-strip{grid-column:1/-1;background:var(--dept);color:#fff;border-radius:11px;padding:12px 16px;
   display:flex;justify-content:space-between;align-items:center;margin:2px 0 12px}
@@ -424,6 +432,25 @@ input,select{font-family:inherit;font-size:16px}
   </div>
 </div>
 
+<!-- docked number pad: slides up while a count box (Full/Extra/Location) is active -->
+<div class="keypad" id="cardKeypad" aria-hidden="true">
+  <div class="kp-target">Typing into: <b id="kpField">Full</b></div>
+  <div class="kp-grid">
+    <button type="button" onmousedown="kpTap(event,'1')" ontouchstart="kpTap(event,'1')">1</button>
+    <button type="button" onmousedown="kpTap(event,'2')" ontouchstart="kpTap(event,'2')">2</button>
+    <button type="button" onmousedown="kpTap(event,'3')" ontouchstart="kpTap(event,'3')">3</button>
+    <button type="button" onmousedown="kpTap(event,'4')" ontouchstart="kpTap(event,'4')">4</button>
+    <button type="button" onmousedown="kpTap(event,'5')" ontouchstart="kpTap(event,'5')">5</button>
+    <button type="button" onmousedown="kpTap(event,'6')" ontouchstart="kpTap(event,'6')">6</button>
+    <button type="button" onmousedown="kpTap(event,'7')" ontouchstart="kpTap(event,'7')">7</button>
+    <button type="button" onmousedown="kpTap(event,'8')" ontouchstart="kpTap(event,'8')">8</button>
+    <button type="button" onmousedown="kpTap(event,'9')" ontouchstart="kpTap(event,'9')">9</button>
+    <button type="button" class="kp-back" onmousedown="kpTap(event,'back')" ontouchstart="kpTap(event,'back')" aria-label="Delete">⌫</button>
+    <button type="button" onmousedown="kpTap(event,'0')" ontouchstart="kpTap(event,'0')">0</button>
+    <button type="button" class="kp-go" onmousedown="kpTap(event,'next')" ontouchstart="kpTap(event,'next')" aria-label="Next / Save">→</button>
+  </div>
+</div>
+
 <script>
 /* ====== Backend config ======
    This page is static (GitHub Pages). It talks to a Cloudflare Worker that reads/writes the
@@ -434,7 +461,7 @@ var API_SECRET = '';
 
 /* Bump this on every page change — the number shows in the bottom-right corner so you can
    confirm a reload actually picked up the latest page (an old cached page has no tag). */
-var APP_VERSION = 'v27';
+var APP_VERSION = 'v28';
 
 /* Call a backend function: callApi('fn', [arg1, arg2]) -> Promise(result). */
 function callApi(fn, args){
@@ -903,42 +930,24 @@ function selectItem(it, edit){
 
         <div class="fld"><label>Full ${dept==='plastics'?'(pallets/boxes)':'(boxes)'}</label>
           <div class="biginput">
-            <input id="f_full" class="big" inputmode="none" enterkeyhint="next" value="${vFull}" oninput="calc()" onfocus="this.select();lastCountField='f_full';kpBind('f_full')" onkeydown="cardEnter(event,'f_extra')">
+            <input id="f_full" class="big" inputmode="none" enterkeyhint="next" value="${vFull}" oninput="calc()" onfocus="this.select();lastCountField='f_full';kpBind('f_full')" onblur="kpHideSoon()" onkeydown="cardEnter(event,'f_extra')">
             <button type="button" class="stepbtn" onclick="nextField('f_extra')" aria-label="Next box">⏎</button>
           </div></div>
         <div class="fld"><label>Extra (loose)</label>
           <div class="biginput">
-            <input id="f_extra" class="big" inputmode="none" enterkeyhint="next" value="${vExtra}" oninput="calc()" onfocus="this.select();lastCountField='f_extra';kpBind('f_extra')" onkeydown="cardEnter(event,'f_loc')">
+            <input id="f_extra" class="big" inputmode="none" enterkeyhint="next" value="${vExtra}" oninput="calc()" onfocus="this.select();lastCountField='f_extra';kpBind('f_extra')" onblur="kpHideSoon()" onkeydown="cardEnter(event,'f_loc')">
             <button type="button" class="stepbtn" onclick="nextField('f_loc')" aria-label="Next box">⏎</button>
           </div></div>
 
         <div class="fld full"><label>Location — building + number</label>
           <div class="locrow">
             <select id="f_bldg" onchange="onCardBldg(this.value)">${bldgOpts}</select>
-            <input id="f_loc" class="mono" inputmode="none" enterkeyhint="done" placeholder="number" value="${vNum}" onfocus="kpBind('f_loc')" onkeydown="cardEnter(event,'save')">
+            <input id="f_loc" class="mono" inputmode="none" enterkeyhint="done" placeholder="number" value="${vNum}" onfocus="kpBind('f_loc')" onblur="kpHideSoon()" onkeydown="cardEnter(event,'save')">
             <button type="button" class="stepbtn ok" onclick="saveEntry()" aria-label="Save entry">✓</button>
           </div></div>
 
         <div class="total-strip"><span class="lbl">Total count</span>
           <span class="val"><span id="totalVal">0</span><small>units</small></span></div>
-
-        <div class="keypad" id="cardKeypad">
-          <div class="kp-target">Typing into: <b id="kpField">Full</b></div>
-          <div class="kp-grid">
-            <button type="button" onmousedown="kpTap(event,'1')" ontouchstart="kpTap(event,'1')">1</button>
-            <button type="button" onmousedown="kpTap(event,'2')" ontouchstart="kpTap(event,'2')">2</button>
-            <button type="button" onmousedown="kpTap(event,'3')" ontouchstart="kpTap(event,'3')">3</button>
-            <button type="button" onmousedown="kpTap(event,'4')" ontouchstart="kpTap(event,'4')">4</button>
-            <button type="button" onmousedown="kpTap(event,'5')" ontouchstart="kpTap(event,'5')">5</button>
-            <button type="button" onmousedown="kpTap(event,'6')" ontouchstart="kpTap(event,'6')">6</button>
-            <button type="button" onmousedown="kpTap(event,'7')" ontouchstart="kpTap(event,'7')">7</button>
-            <button type="button" onmousedown="kpTap(event,'8')" ontouchstart="kpTap(event,'8')">8</button>
-            <button type="button" onmousedown="kpTap(event,'9')" ontouchstart="kpTap(event,'9')">9</button>
-            <button type="button" class="kp-back" onmousedown="kpTap(event,'back')" ontouchstart="kpTap(event,'back')" aria-label="Delete">⌫</button>
-            <button type="button" onmousedown="kpTap(event,'0')" ontouchstart="kpTap(event,'0')">0</button>
-            <button type="button" class="kp-go" onmousedown="kpTap(event,'next')" ontouchstart="kpTap(event,'next')" aria-label="Next / Save">→</button>
-          </div>
-        </div>
       </div>
     </div>
     <div class="actions">
@@ -963,7 +972,18 @@ function nextField(id){ const el=$(id); if(el){ kpBind(id); el.focus(); if(el.se
 // (Full/Extra/Location) use inputmode=none and this keypad instead — it's there the moment the
 // card opens. activeNumField is whichever box was last focused.
 var activeNumField='f_full';
-function kpBind(id){ if(id!=='f_full'&&id!=='f_extra'&&id!=='f_loc') return; activeNumField=id; const l=$('kpField'); if(l){ l.textContent=({f_full:'Full',f_extra:'Extra',f_loc:'Location #'})[id]; } }
+var kpHideTimer=null;
+function kpShow(){ clearTimeout(kpHideTimer); $('cardKeypad').classList.add('show'); $('cardKeypad').setAttribute('aria-hidden','false'); document.body.classList.add('kp-open'); }
+function kpHide(){ clearTimeout(kpHideTimer); $('cardKeypad').classList.remove('show'); $('cardKeypad').setAttribute('aria-hidden','true'); document.body.classList.remove('kp-open'); }
+// Delay the hide a touch so moving focus between the three boxes doesn't flicker the pad off/on.
+function kpHideSoon(){ clearTimeout(kpHideTimer); kpHideTimer=setTimeout(kpHide,150); }
+function kpBind(id){
+  if(id!=='f_full'&&id!=='f_extra'&&id!=='f_loc') return;
+  activeNumField=id;
+  const l=$('kpField'); if(l){ l.textContent=({f_full:'Full',f_extra:'Extra',f_loc:'Location #'})[id]; }
+  kpShow();
+  const el=$(id); if(el){ setTimeout(()=>el.scrollIntoView({block:'center',behavior:'smooth'}),40); } // keep it above the pad
+}
 function kpTap(e,k){
   if(e){ e.preventDefault(); }             // keep the field's value/caret, don't blur to the button
   const el=$(activeNumField); if(!el) return;
@@ -984,7 +1004,7 @@ function cardEnter(e, target){
   if(target==='save'){ saveEntry(); return; }
   nextField(target);
 }
-function clearCardOnly(){ $('cardMount').innerHTML=''; state.current=null; state.editIndex=null; }
+function clearCardOnly(){ kpHide(); $('cardMount').innerHTML=''; state.current=null; state.editIndex=null; }
 function clearCard(){ clearCardOnly(); $('notFound').classList.add('hide'); focusScan(); }
 
 /* ---- save ---- */

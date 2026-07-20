@@ -50,7 +50,7 @@ export default {
       new Response(JSON.stringify(obj), { status, headers: { ...cors, 'Content-Type': 'application/json' } });
 
     if (request.method === 'OPTIONS') return new Response(null, { status: 204, headers: cors });
-    if (request.method === 'GET') return json({ ok: true, service: 'inventory-count-api', build: 'v6' }, 200);
+    if (request.method === 'GET') return json({ ok: true, service: 'inventory-count-api', build: 'v7' }, 200);
     if (request.method !== 'POST') return json({ ok: false, error: 'Method not allowed' }, 405);
 
     let payload;
@@ -79,6 +79,7 @@ async function handle(fn, args, env) {
     case 'getEntries': return getEntries(sheets);
     case 'updateEntry': return updateEntry(sheets, args[0]);
     case 'deleteEntry': return deleteEntry(sheets, args[0]);
+    case 'clearDept': return clearDept(sheets, args[0]);
     default:
       throw new Error('Unknown function: ' + fn);
   }
@@ -215,6 +216,17 @@ async function deleteEntry(sheets, ref) {
   return true;
 }
 
+// Clear every counted row for ONE department, leaving the header intact. Metals clears both the
+// Cans and Ends tabs; Plastics clears only the Plastics tab — so deleting one never touches the
+// other. Tabs that don't exist yet are skipped.
+async function clearDept(sheets, dept) {
+  const tabs = (dept === 'plastics') ? [TAB.plasticsOut] : [TAB.cansOut, TAB.endsOut];
+  for (let i = 0; i < tabs.length; i++) {
+    await sheets.clearRows(tabs[i]);
+  }
+  return true;
+}
+
 // ---------------- Google auth + Sheets ----------------
 let cachedToken = null;
 
@@ -318,6 +330,16 @@ async function makeSheets(env) {
           { method: 'POST', headers: { ...auth, 'Content-Type': 'application/json' }, body: JSON.stringify({ values: [header] }) });
       }
       return true;
+    },
+    // Clear all data rows (row 2 down), keeping the header row. No-op if the tab doesn't exist.
+    async clearRows(tab) {
+      try {
+        return await call(base + '/values/' + encodeURIComponent(tab + '!A2:Z100000') + ':clear',
+          { method: 'POST', headers: { ...auth, 'Content-Type': 'application/json' }, body: '{}' });
+      } catch (err) {
+        if (String((err && err.message) || '').indexOf('Unable to parse range') !== -1) return null;
+        throw err;
+      }
     },
     // Append; if the tab doesn't exist yet, create it (with header) and retry once.
     async appendEnsuring(tab, row, header) {

@@ -149,8 +149,12 @@ input,select{font-family:inherit;font-size:16px}
   padding:7px 8px calc(8px + env(safe-area-inset-bottom,0px));box-shadow:0 -8px 24px rgba(20,26,31,.16);
   transform:translateY(115%);transition:transform .2s ease;will-change:transform}
 .keypad.show{transform:translateY(0)}
-.kp-target{font-family:'JetBrains Mono';font-size:11px;letter-spacing:.1em;text-transform:uppercase;color:var(--ink-soft);margin:2px 0 7px;text-align:center}
+.kp-target{font-family:'JetBrains Mono';font-size:11px;letter-spacing:.1em;text-transform:uppercase;color:var(--ink-soft);margin:2px 4px 7px;
+  display:flex;align-items:center;justify-content:space-between;gap:8px;max-width:460px;margin-left:auto;margin-right:auto}
 .kp-target b{color:var(--dept)}
+.kp-calc{border:1px solid var(--dept);border-radius:8px;background:#fff;color:var(--dept);font-family:'JetBrains Mono';
+  font-weight:800;font-size:12px;letter-spacing:.06em;padding:6px 12px;cursor:pointer;touch-action:manipulation}
+.kp-calc:active{background:var(--dept-soft)}
 .kp-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:7px;max-width:460px;margin:0 auto}
 .kp-grid button{height:52px;border:1px solid #c7ccd1;border-radius:9px;background:#fff;color:var(--ink);
   font-family:'JetBrains Mono';font-weight:800;font-size:23px;display:grid;place-items:center;cursor:pointer;
@@ -434,7 +438,10 @@ body.kp-open #count{padding-bottom:290px}
 
 <!-- docked number pad: slides up while a count box (Full/Extra/Location) is active -->
 <div class="keypad" id="cardKeypad" aria-hidden="true">
-  <div class="kp-target">Typing into: <b id="kpField">Full</b></div>
+  <div class="kp-target">
+    <span>Typing into: <b id="kpField">Full</b></span>
+    <button type="button" class="kp-calc" onmousedown="event.preventDefault()" ontouchstart="event.preventDefault()" onclick="openCalc()" aria-label="Calculator">🧮 Calc</button>
+  </div>
   <div class="kp-grid">
     <button type="button" onmousedown="kpTap(event,'1')" ontouchstart="kpTap(event,'1')">1</button>
     <button type="button" onmousedown="kpTap(event,'2')" ontouchstart="kpTap(event,'2')">2</button>
@@ -461,7 +468,7 @@ var API_SECRET = '';
 
 /* Bump this on every page change — the number shows in the bottom-right corner so you can
    confirm a reload actually picked up the latest page (an old cached page has no tag). */
-var APP_VERSION = 'v28';
+var APP_VERSION = 'v29';
 
 /* Call a backend function: callApi('fn', [arg1, arg2]) -> Promise(result). */
 function callApi(fn, args){

@@ -218,6 +218,8 @@ body.kp-open #count{padding-bottom:290px}
 /* fields that still need a manual entry */
 .fld input.need{border-color:var(--metal-accent);background:#FFF8E6;box-shadow:0 0 0 3px rgba(232,162,26,.18)}
 
+/* freeze the page behind an open calculator/modal */
+html.modal-lock, html.modal-lock body{overflow:hidden!important;touch-action:none;overscroll-behavior:none}
 /* check-value prompt modal */
 .modal{position:fixed;inset:0;z-index:80;background:rgba(20,26,31,.5);display:flex;align-items:center;justify-content:center;padding:20px}
 .modal-card{background:var(--panel);border-radius:var(--radius);width:100%;max-width:380px;padding:20px;box-shadow:0 24px 60px rgba(0,0,0,.35)}
@@ -440,21 +442,21 @@ body.kp-open #count{padding-bottom:290px}
 <div class="keypad" id="cardKeypad" aria-hidden="true">
   <div class="kp-target">
     <span>Typing into: <b id="kpField">Full</b></span>
-    <button type="button" class="kp-calc" onmousedown="kpOpenCalc(event)" ontouchstart="kpOpenCalc(event)" aria-label="Calculator">🧮 Calculator</button>
+    <button type="button" class="kp-calc" onpointerdown="kpOpenCalc(event)" aria-label="Calculator">🧮 Calculator</button>
   </div>
   <div class="kp-grid">
-    <button type="button" onmousedown="kpTap(event,'1')" ontouchstart="kpTap(event,'1')">1</button>
-    <button type="button" onmousedown="kpTap(event,'2')" ontouchstart="kpTap(event,'2')">2</button>
-    <button type="button" onmousedown="kpTap(event,'3')" ontouchstart="kpTap(event,'3')">3</button>
-    <button type="button" onmousedown="kpTap(event,'4')" ontouchstart="kpTap(event,'4')">4</button>
-    <button type="button" onmousedown="kpTap(event,'5')" ontouchstart="kpTap(event,'5')">5</button>
-    <button type="button" onmousedown="kpTap(event,'6')" ontouchstart="kpTap(event,'6')">6</button>
-    <button type="button" onmousedown="kpTap(event,'7')" ontouchstart="kpTap(event,'7')">7</button>
-    <button type="button" onmousedown="kpTap(event,'8')" ontouchstart="kpTap(event,'8')">8</button>
-    <button type="button" onmousedown="kpTap(event,'9')" ontouchstart="kpTap(event,'9')">9</button>
-    <button type="button" class="kp-back" onmousedown="kpTap(event,'back')" ontouchstart="kpTap(event,'back')" aria-label="Delete">⌫</button>
-    <button type="button" onmousedown="kpTap(event,'0')" ontouchstart="kpTap(event,'0')">0</button>
-    <button type="button" class="kp-go" onmousedown="kpTap(event,'next')" ontouchstart="kpTap(event,'next')" aria-label="Next / Save">→</button>
+    <button type="button" onpointerdown="kpTap(event,'1')">1</button>
+    <button type="button" onpointerdown="kpTap(event,'2')">2</button>
+    <button type="button" onpointerdown="kpTap(event,'3')">3</button>
+    <button type="button" onpointerdown="kpTap(event,'4')">4</button>
+    <button type="button" onpointerdown="kpTap(event,'5')">5</button>
+    <button type="button" onpointerdown="kpTap(event,'6')">6</button>
+    <button type="button" onpointerdown="kpTap(event,'7')">7</button>
+    <button type="button" onpointerdown="kpTap(event,'8')">8</button>
+    <button type="button" onpointerdown="kpTap(event,'9')">9</button>
+    <button type="button" class="kp-back" onpointerdown="kpBackStart(event)" onpointerup="kpBackStop()" onpointerleave="kpBackStop()" onpointercancel="kpBackStop()" aria-label="Delete (hold to clear)">⌫</button>
+    <button type="button" onpointerdown="kpTap(event,'0')">0</button>
+    <button type="button" class="kp-go" onpointerdown="kpTap(event,'next')" aria-label="Next / Save">→</button>
   </div>
 </div>
 
@@ -468,7 +470,7 @@ var API_SECRET = '';
 
 /* Bump this on every page change — the number shows in the bottom-right corner so you can
    confirm a reload actually picked up the latest page (an old cached page has no tag). */
-var APP_VERSION = 'v30';
+var APP_VERSION = 'v31';
 
 /* Call a backend function: callApi('fn', [arg1, arg2]) -> Promise(result). */
 function callApi(fn, args){
@@ -767,9 +769,15 @@ function calcHistPush(entry){
 }
 function openCalc(){
   $('calcModal').classList.remove('hide');
+  document.documentElement.classList.add('modal-lock');   // freeze the page behind the calculator
   renderCalcHist();
 }
-function closeCalc(){ $('calcModal').classList.add('hide'); }
+function closeCalc(){
+  $('calcModal').classList.add('hide');
+  document.documentElement.classList.remove('modal-lock');
+  const el=$(activeNumField);                             // bring the keypad back to the box you were on
+  if(el){ el.focus(); if(el.select) el.select(); }
+}
 function calcPress(ch){ $('calcDisplay').value+=ch; }
 function calcBack(){ const d=$('calcDisplay'); d.value=d.value.slice(0,-1); }
 function calcClear(){ $('calcDisplay').value=''; $('calcResult').textContent=''; calcLast=null; }
@@ -799,12 +807,14 @@ function calcUse(){
   let v=calcLast;
   if(v===null){ v=calcEval($('calcDisplay').value); }
   if(v===null){ $('calcResult').textContent='?'; return; }
-  const target = lastCountField && $(lastCountField) ? $(lastCountField) : null;
+  // Fill whichever box the keypad is on (falls back to the last count box used).
+  const id = (activeNumField && $(activeNumField)) ? activeNumField : ((lastCountField && $(lastCountField)) ? lastCountField : null);
+  const target = id ? $(id) : null;
   if(target){
     target.value=String(v);
     target.dispatchEvent(new Event('input',{bubbles:true})); // fires calc() for the total
-    closeCalc();
-    target.focus(); if(target.select) target.select();
+    activeNumField=id;
+    closeCalc();                                             // refocuses the box → keypad returns
   } else {
     // No count box open — just show it so they can read/type it.
     $('calcResult').textContent=Number(v).toLocaleString()+'  (open an item first to auto-fill)';
@@ -933,21 +943,21 @@ function selectItem(it, edit){
         <div class="fld full"><label>${codeLabel}</label><input id="f_code" class="mono" value="${esc(it.code||'')}"></div>
         <div class="fld full"><label>Description</label><input id="f_desc" value="${esc(it.desc)}"></div>
         ${extraFields}
-        <div class="fld full"><label>${perLabel}</label><input id="f_per" class="mono" inputmode="numeric" value="${it.perUnit??''}" oninput="calc()"></div>
+        <div class="fld full"><label>${perLabel}</label><input id="f_per" class="mono" inputmode="none" value="${it.perUnit??''}" oninput="calc()" onfocus="this.select();kpBind('f_per')" onblur="kpOnBlur()"></div>
 
         <div class="fld"><label>Full ${dept==='plastics'?'(pallets/boxes)':'(boxes)'}</label>
           <div class="biginput">
-            <input id="f_full" class="big" inputmode="none" enterkeyhint="next" value="${vFull}" oninput="calc()" onfocus="this.select();lastCountField='f_full';kpBind('f_full')" onblur="kpHideSoon()" onkeydown="cardEnter(event,'f_extra')">
+            <input id="f_full" class="big" inputmode="none" enterkeyhint="next" value="${vFull}" oninput="calc()" onfocus="this.select();lastCountField='f_full';kpBind('f_full')" onblur="kpOnBlur()" onkeydown="cardEnter(event,'f_extra')">
           </div></div>
         <div class="fld"><label>Extra (loose)</label>
           <div class="biginput">
-            <input id="f_extra" class="big" inputmode="none" enterkeyhint="next" value="${vExtra}" oninput="calc()" onfocus="this.select();lastCountField='f_extra';kpBind('f_extra')" onblur="kpHideSoon()" onkeydown="cardEnter(event,'f_loc')">
+            <input id="f_extra" class="big" inputmode="none" enterkeyhint="next" value="${vExtra}" oninput="calc()" onfocus="this.select();lastCountField='f_extra';kpBind('f_extra')" onblur="kpOnBlur()" onkeydown="cardEnter(event,'f_loc')">
           </div></div>
 
         <div class="fld full"><label>Location — building + number</label>
           <div class="locrow">
             <select id="f_bldg" onchange="onCardBldg(this.value)">${bldgOpts}</select>
-            <input id="f_loc" class="mono" inputmode="none" enterkeyhint="done" placeholder="number" value="${vNum}" onfocus="kpBind('f_loc')" onblur="kpHideSoon()" onkeydown="cardEnter(event,'save')">
+            <input id="f_loc" class="mono" inputmode="none" enterkeyhint="done" placeholder="number" value="${vNum}" onfocus="kpBind('f_loc')" onblur="kpOnBlur()" onkeydown="cardEnter(event,'save')">
           </div></div>
 
         <div class="total-strip"><span class="lbl">Total count</span>
@@ -973,36 +983,54 @@ function nextField(id){ const el=$(id); if(el){ kpBind(id); el.focus(); if(el.se
 
 /* ---- on-screen number pad on the card ---- */
 // iOS won't open its keyboard on the programmatic focus that follows a scan, so the count boxes
-// (Full/Extra/Location) use inputmode=none and this keypad instead — it's there the moment the
-// card opens. activeNumField is whichever box was last focused.
+// (Per/Full/Extra/Location) use inputmode=none and this docked keypad instead. Buttons fire on a
+// single pointerdown (no mouse+touch double-firing) and edit whichever box is active.
 var activeNumField='f_full';
-var kpHideTimer=null;
-function kpShow(){ clearTimeout(kpHideTimer); $('cardKeypad').classList.add('show'); $('cardKeypad').setAttribute('aria-hidden','false'); document.body.classList.add('kp-open'); }
-function kpHide(){ clearTimeout(kpHideTimer); $('cardKeypad').classList.remove('show'); $('cardKeypad').setAttribute('aria-hidden','true'); document.body.classList.remove('kp-open'); }
-// Delay the hide a touch so moving focus between the three boxes doesn't flicker the pad off/on.
-function kpHideSoon(){ clearTimeout(kpHideTimer); kpHideTimer=setTimeout(kpHide,150); }
+function kpIsField(id){ return id==='f_per'||id==='f_full'||id==='f_extra'||id==='f_loc'; }
+function kpShow(){ $('cardKeypad').classList.add('show'); $('cardKeypad').setAttribute('aria-hidden','false'); document.body.classList.add('kp-open'); }
+function kpHide(){ kpBackStop(); $('cardKeypad').classList.remove('show'); $('cardKeypad').setAttribute('aria-hidden','true'); document.body.classList.remove('kp-open'); }
 function kpBind(id){
-  if(id!=='f_full'&&id!=='f_extra'&&id!=='f_loc') return;
+  if(!kpIsField(id)) return;
   activeNumField=id;
-  const l=$('kpField'); if(l){ l.textContent=({f_full:'Full',f_extra:'Extra',f_loc:'Location #'})[id]; }
+  const l=$('kpField'); if(l){ l.textContent=({f_per:'Per unit',f_full:'Full',f_extra:'Extra',f_loc:'Location #'})[id]; }
   kpShow();
   const el=$(id); if(el){ setTimeout(()=>el.scrollIntoView({block:'center',behavior:'smooth'}),40); } // keep it above the pad
 }
+// Called on box blur AND globally on focusin: keep the pad only while focus stays on a count box
+// or on the keypad itself; otherwise tuck it away.
+function kpOnBlur(){
+  setTimeout(function(){
+    if(!$('calcModal').classList.contains('hide')) return;   // calculator is open — leave the pad be
+    const a=document.activeElement;
+    if(a && (kpIsField(a.id) || $('cardKeypad').contains(a))) return;
+    kpHide();
+  },0);
+}
+document.addEventListener('focusin', function(ev){
+  const a=ev.target;
+  if(!$('cardKeypad').classList.contains('show')) return;
+  if(!$('calcModal').classList.contains('hide')) return;     // calculator is open — leave the pad be
+  if(a && (kpIsField(a.id) || $('cardKeypad').contains(a))) return;
+  kpHide();
+});
 function kpTap(e,k){
-  if(e){ e.preventDefault(); }             // keep the field's value/caret, don't blur to the button
+  if(e){ e.preventDefault(); }
   const el=$(activeNumField); if(!el) return;
   if(k==='next'){ kpAdvance(); return; }
-  if(k==='back'){ el.value=el.value.slice(0,-1); }
-  else { el.value=(el.value||'')+k; }
-  el.dispatchEvent(new Event('input',{bubbles:true}));   // fires calc() for the total
+  el.value = (el.value==='0' ? '' : (el.value||'')) + k;   // replace the placeholder 0 on first digit
+  el.dispatchEvent(new Event('input',{bubbles:true}));      // fires calc() for the total
 }
 function kpAdvance(){
-  if(activeNumField==='f_full'){ nextField('f_extra'); }
+  if(activeNumField==='f_per'){ nextField('f_full'); }
+  else if(activeNumField==='f_full'){ nextField('f_extra'); }
   else if(activeNumField==='f_extra'){ nextField('f_loc'); }
   else { saveEntry(); }
 }
-// Open the calculator from the keypad. Done in the touch/mouse handler (not onclick) because the
-// keypad suppresses the emulated click to keep the count box focused — so onclick never fires.
+/* press-and-hold backspace: one delete on tap, then rapid delete while held */
+var kpRepeatTO=null, kpRepeatIV=null;
+function kpDoBack(){ const el=$(activeNumField); if(!el||!el.value){ kpBackStop(); return; } el.value=el.value.slice(0,-1); el.dispatchEvent(new Event('input',{bubbles:true})); }
+function kpBackStart(e){ if(e){ e.preventDefault(); } kpDoBack(); clearTimeout(kpRepeatTO); kpRepeatTO=setTimeout(function(){ kpRepeatIV=setInterval(kpDoBack,60); },400); }
+function kpBackStop(){ clearTimeout(kpRepeatTO); clearInterval(kpRepeatIV); kpRepeatIV=null; }
 function kpOpenCalc(e){ if(e){ e.preventDefault(); } openCalc(); }
 /* Enter moves through the boxes: Full -> Extra -> Location -> save */
 function cardEnter(e, target){

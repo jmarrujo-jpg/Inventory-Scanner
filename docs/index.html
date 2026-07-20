@@ -163,8 +163,8 @@ input,select{font-family:inherit;font-size:16px}
 .kp-grid button.kp-back{color:var(--ink-soft);font-size:21px}
 .kp-grid button.kp-go{background:var(--ok);border-color:var(--ok);color:#fff;font-size:19px;box-shadow:none}
 /* pressed-button feedback (darken + slight shrink) for every keypad/calculator key */
-.kp-grid button,.calc-grid button,.kp-calc,.calc-fab{transition:filter .06s ease,transform .06s ease}
-.kp-grid button.is-press,.calc-grid button.is-press,.kp-calc.is-press,.calc-fab.is-press{filter:brightness(.82);transform:scale(.94)}
+.kp-grid button,.calc-grid button,.kp-calc{transition:filter .06s ease,transform .06s ease}
+.kp-grid button.is-press,.calc-grid button.is-press,.kp-calc.is-press{filter:brightness(.82);transform:scale(.94)}
 /* leave room to scroll the active field above the docked pad */
 body.kp-open #count{padding-bottom:290px}
 
@@ -250,12 +250,7 @@ html.modal-lock body{position:fixed;left:0;right:0;width:100%;overflow:hidden}
 .search-x.show{display:grid}
 .search-x:active{filter:brightness(.9)}
 
-/* floating calculator button */
-.calc-fab{position:fixed;right:16px;bottom:16px;z-index:70;width:60px;height:60px;border:none;border-radius:50%;
-  background:var(--dept);color:#fff;font-size:26px;box-shadow:0 10px 26px rgba(20,26,31,.32);cursor:pointer;display:grid;place-items:center}
-.calc-fab:active{filter:brightness(.92)}
 .ico-calc{display:inline-block;vertical-align:middle}
-.calc-fab .ico-calc{width:30px;height:30px}
 .kp-calc .ico-calc{width:15px;height:15px;margin-right:5px;margin-top:-2px}
 
 /* calculator modal */
@@ -384,8 +379,6 @@ html.modal-lock body{position:fixed;left:0;right:0;width:100%;overflow:hidden}
   </div>
 </div>
 
-<!-- floating calculator -->
-<button type="button" class="calc-fab" id="calcFab" onclick="openCalc()" aria-label="Calculator"><svg class="ico-calc" viewBox="0 0 24 24" aria-hidden="true"><rect x="4.5" y="2.5" width="15" height="19" rx="2.5" fill="none" stroke="currentColor" stroke-width="1.7"/><rect x="7" y="5" width="10" height="3.4" rx="1" fill="currentColor"/><circle cx="8.3" cy="12.4" r="1.15" fill="currentColor"/><circle cx="12" cy="12.4" r="1.15" fill="currentColor"/><circle cx="15.7" cy="12.4" r="1.15" fill="currentColor"/><circle cx="8.3" cy="16" r="1.15" fill="currentColor"/><circle cx="12" cy="16" r="1.15" fill="currentColor"/><circle cx="15.7" cy="16" r="1.15" fill="currentColor"/><circle cx="8.3" cy="19.4" r="1.15" fill="currentColor"/><circle cx="12" cy="19.4" r="1.15" fill="currentColor"/><circle cx="15.7" cy="19.4" r="1.15" fill="currentColor"/></svg></button>
 <div id="calcModal" class="modal hide" onclick="if(event.target===this)closeCalc()">
   <div class="modal-card calc-card">
     <div class="calc-head">
@@ -434,6 +427,7 @@ html.modal-lock body{position:fixed;left:0;right:0;width:100%;overflow:hidden}
       <div class="gate-actions">
         <button type="button" class="btn primary" onclick="gateAppend()">➕ Append — continue counting</button>
         <button type="button" class="btn danger" onclick="gateAskDelete()">🗑 Delete all data</button>
+        <button type="button" class="btn ghost" onclick="gateClose()">← Go back</button>
       </div>
     </div>
     <!-- step 2: confirm delete -->
@@ -479,7 +473,7 @@ var API_SECRET = '';
 
 /* Bump this on every page change — the number shows in the bottom-right corner so you can
    confirm a reload actually picked up the latest page (an old cached page has no tag). */
-var APP_VERSION = 'v33';
+var APP_VERSION = 'v34';
 
 /* Call a backend function: callApi('fn', [arg1, arg2]) -> Promise(result). */
 function callApi(fn, args){
@@ -1054,7 +1048,7 @@ function kpBackStop(){ clearTimeout(kpRepeatTO); clearInterval(kpRepeatIV); kpRe
 function kpOpenCalc(e){ if(e){ e.preventDefault(); } openCalc(); }
 // Visual press feedback: briefly darken/shrink any keypad or calculator button that's pressed.
 document.addEventListener('pointerdown', function(ev){
-  const b = ev.target.closest('.kp-grid button, .calc-grid button, .kp-calc, .calc-fab');
+  const b = ev.target.closest('.kp-grid button, .calc-grid button, .kp-calc');
   if(!b) return;
   b.classList.add('is-press');
   setTimeout(function(){ b.classList.remove('is-press'); }, 160);

@@ -147,6 +147,16 @@ input,select{font-family:inherit;font-size:16px}
 .stepbtn{flex:0 0 58px;border-radius:10px;background:var(--dept);color:#fff;font-weight:800;font-size:20px;display:grid;place-items:center;cursor:pointer}
 .stepbtn:active{filter:brightness(.92)}
 .stepbtn.ok{background:var(--ok)}
+/* on-screen number pad (needed when a Bluetooth scanner suppresses the iOS keyboard) */
+.keypad{margin-top:14px;border-top:1px dashed var(--line);padding-top:12px}
+.kp-target{font-family:'JetBrains Mono';font-size:11px;letter-spacing:.12em;text-transform:uppercase;color:var(--ink-soft);margin-bottom:8px;text-align:center}
+.kp-target b{color:var(--dept)}
+.kp-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}
+.kp-grid button{height:56px;border:1.5px solid var(--line);border-radius:12px;background:#fff;color:var(--ink);
+  font-family:'JetBrains Mono';font-weight:800;font-size:24px;display:grid;place-items:center;cursor:pointer;-webkit-user-select:none;user-select:none;touch-action:manipulation}
+.kp-grid button:active{background:var(--dept-soft);border-color:var(--dept)}
+.kp-grid button.kp-back{color:var(--ink-soft);font-size:22px}
+.kp-grid button.kp-go{background:var(--ok);border-color:var(--ok);color:#fff;font-size:20px}
 .fld input[readonly]{background:var(--dept-soft);border-color:transparent;color:var(--dept);font-weight:700}
 
 .total-strip{grid-column:1/-1;background:var(--dept);color:#fff;border-radius:11px;padding:12px 16px;
@@ -321,7 +331,7 @@ var API_SECRET = '';
 
 /* Bump this on every page change — the number shows in the bottom-right corner so you can
    confirm a reload actually picked up the latest page (an old cached page has no tag). */
-var APP_VERSION = 'v20';
+var APP_VERSION = 'v21';
 
 /* Call a backend function: callApi('fn', [arg1, arg2]) -> Promise(result). */
 function callApi(fn, args){
@@ -689,24 +699,42 @@ function selectItem(it, edit){
 
         <div class="fld"><label>Full ${dept==='plastics'?'(pallets/boxes)':'(boxes)'}</label>
           <div class="biginput">
-            <input id="f_full" class="big" inputmode="numeric" enterkeyhint="next" value="${vFull}" oninput="calc()" onfocus="this.select()" onkeydown="cardEnter(event,'f_extra')">
+            <input id="f_full" class="big" inputmode="numeric" enterkeyhint="next" value="${vFull}" oninput="calc()" onfocus="this.select();kpBind('f_full')" onkeydown="cardEnter(event,'f_extra')">
             <button type="button" class="stepbtn" onclick="nextField('f_extra')" aria-label="Next box">⏎</button>
           </div></div>
         <div class="fld"><label>Extra (loose)</label>
           <div class="biginput">
-            <input id="f_extra" class="big" inputmode="numeric" enterkeyhint="next" value="${vExtra}" oninput="calc()" onfocus="this.select()" onkeydown="cardEnter(event,'f_loc')">
+            <input id="f_extra" class="big" inputmode="numeric" enterkeyhint="next" value="${vExtra}" oninput="calc()" onfocus="this.select();kpBind('f_extra')" onkeydown="cardEnter(event,'f_loc')">
             <button type="button" class="stepbtn" onclick="nextField('f_loc')" aria-label="Next box">⏎</button>
           </div></div>
 
         <div class="fld full"><label>Location — building + number</label>
           <div class="locrow">
             <select id="f_bldg" onchange="onCardBldg(this.value)">${bldgOpts}</select>
-            <input id="f_loc" class="mono" inputmode="numeric" enterkeyhint="done" placeholder="number" value="${vNum}" onkeydown="cardEnter(event,'save')">
+            <input id="f_loc" class="mono" inputmode="numeric" enterkeyhint="done" placeholder="number" value="${vNum}" onfocus="kpBind('f_loc')" onkeydown="cardEnter(event,'save')">
             <button type="button" class="stepbtn ok" onclick="saveEntry()" aria-label="Save entry">✓</button>
           </div></div>
 
         <div class="total-strip"><span class="lbl">Total count</span>
           <span class="val"><span id="totalVal">0</span><small>units</small></span></div>
+
+        <div class="keypad" id="keypad">
+          <div class="kp-target">Typing into: <b id="kpField">Full</b></div>
+          <div class="kp-grid">
+            <button type="button" onmousedown="kpTap(event,'1')" ontouchstart="kpTap(event,'1')">1</button>
+            <button type="button" onmousedown="kpTap(event,'2')" ontouchstart="kpTap(event,'2')">2</button>
+            <button type="button" onmousedown="kpTap(event,'3')" ontouchstart="kpTap(event,'3')">3</button>
+            <button type="button" onmousedown="kpTap(event,'4')" ontouchstart="kpTap(event,'4')">4</button>
+            <button type="button" onmousedown="kpTap(event,'5')" ontouchstart="kpTap(event,'5')">5</button>
+            <button type="button" onmousedown="kpTap(event,'6')" ontouchstart="kpTap(event,'6')">6</button>
+            <button type="button" onmousedown="kpTap(event,'7')" ontouchstart="kpTap(event,'7')">7</button>
+            <button type="button" onmousedown="kpTap(event,'8')" ontouchstart="kpTap(event,'8')">8</button>
+            <button type="button" onmousedown="kpTap(event,'9')" ontouchstart="kpTap(event,'9')">9</button>
+            <button type="button" class="kp-back" onmousedown="kpTap(event,'back')" ontouchstart="kpTap(event,'back')" aria-label="Delete">⌫</button>
+            <button type="button" onmousedown="kpTap(event,'0')" ontouchstart="kpTap(event,'0')">0</button>
+            <button type="button" class="kp-go" onmousedown="kpTap(event,'next')" ontouchstart="kpTap(event,'next')" aria-label="Next / Save">→</button>
+          </div>
+        </div>
       </div>
     </div>
     <div class="actions">
@@ -724,7 +752,24 @@ function calc(){
   $('totalVal').textContent=total.toLocaleString();
 }
 /* Focus a box and scroll it into view (keeps it above the phone keyboard). */
-function nextField(id){ const el=$(id); if(el){ el.focus(); if(el.select) el.select(); el.scrollIntoView({block:'center',behavior:'smooth'}); } }
+function nextField(id){ const el=$(id); if(el){ kpBind(id); el.focus(); if(el.select) el.select(); el.scrollIntoView({block:'center',behavior:'smooth'}); } }
+
+/* ---- on-screen number pad (works when a Bluetooth scanner hides the iOS keyboard) ---- */
+var activeNumField='f_full';
+function kpBind(id){ activeNumField=id; const lbl=$('kpField'); if(lbl){ lbl.textContent=({f_full:'Full',f_extra:'Extra',f_loc:'Location #'})[id]||id; } }
+function kpTap(e,k){
+  if(e){ e.preventDefault(); }              // keep focus in the field, don't blur to the button
+  var el=$(activeNumField); if(!el) return;
+  if(k==='next'){ kpAdvance(); return; }
+  if(k==='back'){ el.value=el.value.slice(0,-1); }
+  else { el.value=(el.value||'')+k; }
+  el.dispatchEvent(new Event('input',{bubbles:true}));   // fires calc()
+}
+function kpAdvance(){
+  if(activeNumField==='f_full'){ nextField('f_extra'); }
+  else if(activeNumField==='f_extra'){ nextField('f_loc'); }
+  else { saveEntry(); }
+}
 /* Enter moves through the boxes: Full -> Extra -> Location -> save */
 function cardEnter(e, target){
   if(e.key!=='Enter') return;

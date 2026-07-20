@@ -440,7 +440,7 @@ body.kp-open #count{padding-bottom:290px}
 <div class="keypad" id="cardKeypad" aria-hidden="true">
   <div class="kp-target">
     <span>Typing into: <b id="kpField">Full</b></span>
-    <button type="button" class="kp-calc" onmousedown="event.preventDefault()" ontouchstart="event.preventDefault()" onclick="openCalc()" aria-label="Calculator">🧮 Calc</button>
+    <button type="button" class="kp-calc" onmousedown="kpOpenCalc(event)" ontouchstart="kpOpenCalc(event)" aria-label="Calculator">🧮 Calculator</button>
   </div>
   <div class="kp-grid">
     <button type="button" onmousedown="kpTap(event,'1')" ontouchstart="kpTap(event,'1')">1</button>
@@ -468,7 +468,7 @@ var API_SECRET = '';
 
 /* Bump this on every page change — the number shows in the bottom-right corner so you can
    confirm a reload actually picked up the latest page (an old cached page has no tag). */
-var APP_VERSION = 'v29';
+var APP_VERSION = 'v30';
 
 /* Call a backend function: callApi('fn', [arg1, arg2]) -> Promise(result). */
 function callApi(fn, args){
@@ -938,19 +938,16 @@ function selectItem(it, edit){
         <div class="fld"><label>Full ${dept==='plastics'?'(pallets/boxes)':'(boxes)'}</label>
           <div class="biginput">
             <input id="f_full" class="big" inputmode="none" enterkeyhint="next" value="${vFull}" oninput="calc()" onfocus="this.select();lastCountField='f_full';kpBind('f_full')" onblur="kpHideSoon()" onkeydown="cardEnter(event,'f_extra')">
-            <button type="button" class="stepbtn" onclick="nextField('f_extra')" aria-label="Next box">⏎</button>
           </div></div>
         <div class="fld"><label>Extra (loose)</label>
           <div class="biginput">
             <input id="f_extra" class="big" inputmode="none" enterkeyhint="next" value="${vExtra}" oninput="calc()" onfocus="this.select();lastCountField='f_extra';kpBind('f_extra')" onblur="kpHideSoon()" onkeydown="cardEnter(event,'f_loc')">
-            <button type="button" class="stepbtn" onclick="nextField('f_loc')" aria-label="Next box">⏎</button>
           </div></div>
 
         <div class="fld full"><label>Location — building + number</label>
           <div class="locrow">
             <select id="f_bldg" onchange="onCardBldg(this.value)">${bldgOpts}</select>
             <input id="f_loc" class="mono" inputmode="none" enterkeyhint="done" placeholder="number" value="${vNum}" onfocus="kpBind('f_loc')" onblur="kpHideSoon()" onkeydown="cardEnter(event,'save')">
-            <button type="button" class="stepbtn ok" onclick="saveEntry()" aria-label="Save entry">✓</button>
           </div></div>
 
         <div class="total-strip"><span class="lbl">Total count</span>
@@ -1004,6 +1001,9 @@ function kpAdvance(){
   else if(activeNumField==='f_extra'){ nextField('f_loc'); }
   else { saveEntry(); }
 }
+// Open the calculator from the keypad. Done in the touch/mouse handler (not onclick) because the
+// keypad suppresses the emulated click to keep the count box focused — so onclick never fires.
+function kpOpenCalc(e){ if(e){ e.preventDefault(); } openCalc(); }
 /* Enter moves through the boxes: Full -> Extra -> Location -> save */
 function cardEnter(e, target){
   if(e.key!=='Enter') return;

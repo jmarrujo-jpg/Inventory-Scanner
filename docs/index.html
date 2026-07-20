@@ -162,6 +162,9 @@ input,select{font-family:inherit;font-size:16px}
 .kp-grid button:active{background:var(--dept-soft);border-color:var(--dept)}
 .kp-grid button.kp-back{color:var(--ink-soft);font-size:21px}
 .kp-grid button.kp-go{background:var(--ok);border-color:var(--ok);color:#fff;font-size:19px;box-shadow:none}
+/* pressed-button feedback (darken + slight shrink) for every keypad/calculator key */
+.kp-grid button,.calc-grid button,.kp-calc,.calc-fab{transition:filter .06s ease,transform .06s ease}
+.kp-grid button.is-press,.calc-grid button.is-press,.kp-calc.is-press,.calc-fab.is-press{filter:brightness(.82);transform:scale(.94)}
 /* leave room to scroll the active field above the docked pad */
 body.kp-open #count{padding-bottom:290px}
 
@@ -219,11 +222,13 @@ body.kp-open #count{padding-bottom:290px}
 .fld input.need{border-color:var(--metal-accent);background:#FFF8E6;box-shadow:0 0 0 3px rgba(232,162,26,.18)}
 
 /* freeze the page behind an open calculator/modal (the overlay scrolls itself if it's tall) */
-html.modal-lock, html.modal-lock body{overflow:hidden!important}
+/* Freeze the page WITHOUT moving it: body is pinned at its current offset (top set from JS). */
+html.modal-lock body{position:fixed;left:0;right:0;width:100%;overflow:hidden}
 /* check-value prompt modal */
-.modal{position:fixed;inset:0;z-index:80;background:rgba(20,26,31,.5);display:flex;align-items:flex-start;justify-content:center;
-  padding:20px;overflow-y:auto;overscroll-behavior:contain;-webkit-overflow-scrolling:touch}
-.modal-card{background:var(--panel);border-radius:var(--radius);width:100%;max-width:380px;padding:20px;box-shadow:0 24px 60px rgba(0,0,0,.35)}
+.modal{position:fixed;inset:0;z-index:80;background:rgba(20,26,31,.5);display:flex;flex-direction:column;
+  align-items:center;justify-content:flex-start;padding:20px;overflow-y:auto;overscroll-behavior:contain;-webkit-overflow-scrolling:touch}
+/* margin:auto centers the card when it fits, but lets it scroll from the top when it's taller than the screen */
+.modal-card{background:var(--panel);border-radius:var(--radius);width:100%;max-width:380px;padding:20px;box-shadow:0 24px 60px rgba(0,0,0,.35);margin:auto 0}
 .modal-title{font-family:'Archivo';font-weight:900;font-size:22px;color:var(--dept);letter-spacing:-.01em}
 .modal-hint{color:var(--ink-soft);font-size:13px;margin:6px 0 14px}
 #modalInput{width:100%;height:var(--tap);border:2px solid var(--dept);border-radius:11px;background:#fff;padding:0 16px;
@@ -474,7 +479,7 @@ var API_SECRET = '';
 
 /* Bump this on every page change — the number shows in the bottom-right corner so you can
    confirm a reload actually picked up the latest page (an old cached page has no tag). */
-var APP_VERSION = 'v32';
+var APP_VERSION = 'v33';
 
 /* Call a backend function: callApi('fn', [arg1, arg2]) -> Promise(result). */
 function callApi(fn, args){
@@ -771,16 +776,27 @@ function calcHistPush(entry){
   all[p]=list.slice(0,3);                  // keep the last 3 per person
   try{ localStorage.setItem(CALC_HIST_KEY, JSON.stringify(all)); }catch(_){}
 }
+var _lockY=0;
+function lockScroll(){
+  _lockY = window.scrollY || window.pageYOffset || 0;
+  document.body.style.top = (-_lockY)+'px';               // pin the page exactly where it is (no jump)
+  document.documentElement.classList.add('modal-lock');
+}
+function unlockScroll(){
+  document.documentElement.classList.remove('modal-lock');
+  document.body.style.top = '';
+  window.scrollTo(0, _lockY);                             // restore instantly, no animation
+}
 function openCalc(){
   $('calcModal').classList.remove('hide');
-  document.documentElement.classList.add('modal-lock');   // freeze the page behind the calculator
+  lockScroll();
   renderCalcHist();
 }
 function closeCalc(){
   $('calcModal').classList.add('hide');
-  document.documentElement.classList.remove('modal-lock');
-  const el=$(activeNumField);                             // bring the keypad back to the box you were on
-  if(el){ el.focus(); if(el.select) el.select(); }
+  unlockScroll();
+  // Bring the keypad back to the box you were on — without focusing (which would scroll the page).
+  if($(activeNumField)) kpShow();
 }
 function calcPress(ch){ $('calcDisplay').value+=ch; }
 function calcBack(){ const d=$('calcDisplay'); d.value=d.value.slice(0,-1); }
@@ -1036,6 +1052,13 @@ function kpDoBack(){ const el=$(activeNumField); if(!el||!el.value){ kpBackStop(
 function kpBackStart(e){ if(e){ e.preventDefault(); } kpDoBack(); clearTimeout(kpRepeatTO); kpRepeatTO=setTimeout(function(){ kpRepeatIV=setInterval(kpDoBack,60); },400); }
 function kpBackStop(){ clearTimeout(kpRepeatTO); clearInterval(kpRepeatIV); kpRepeatIV=null; }
 function kpOpenCalc(e){ if(e){ e.preventDefault(); } openCalc(); }
+// Visual press feedback: briefly darken/shrink any keypad or calculator button that's pressed.
+document.addEventListener('pointerdown', function(ev){
+  const b = ev.target.closest('.kp-grid button, .calc-grid button, .kp-calc, .calc-fab');
+  if(!b) return;
+  b.classList.add('is-press');
+  setTimeout(function(){ b.classList.remove('is-press'); }, 160);
+});
 /* Enter moves through the boxes: Full -> Extra -> Location -> save */
 function cardEnter(e, target){
   if(e.key!=='Enter') return;

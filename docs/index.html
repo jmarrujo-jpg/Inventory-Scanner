@@ -354,7 +354,7 @@ input,select{font-family:inherit;font-size:16px}
       <div class="modal-title">Calculator</div>
       <button type="button" class="calc-x" onclick="closeCalc()" aria-label="Close">×</button>
     </div>
-    <input id="calcDisplay" inputmode="none" autocomplete="off" placeholder="0" onkeydown="calcKey(event)">
+    <input id="calcDisplay" inputmode="none" readonly autocomplete="off" placeholder="0">
     <div class="calc-result" id="calcResult"></div>
     <div class="calc-grid">
       <button type="button" class="clr" onclick="calcClear()">C</button>
@@ -396,7 +396,7 @@ var API_SECRET = '';
 
 /* Bump this on every page change — the number shows in the bottom-right corner so you can
    confirm a reload actually picked up the latest page (an old cached page has no tag). */
-var APP_VERSION = 'v24';
+var APP_VERSION = 'v25';
 
 /* Call a backend function: callApi('fn', [arg1, arg2]) -> Promise(result). */
 function callApi(fn, args){
@@ -647,13 +647,11 @@ function calcHistPush(entry){
 function openCalc(){
   $('calcModal').classList.remove('hide');
   renderCalcHist();
-  setTimeout(()=>{ const d=$('calcDisplay'); d.focus(); if(d.select) d.select(); },50);
 }
 function closeCalc(){ $('calcModal').classList.add('hide'); }
-function calcPress(ch){ const d=$('calcDisplay'); d.value+=ch; d.focus(); }
+function calcPress(ch){ $('calcDisplay').value+=ch; }
 function calcBack(){ const d=$('calcDisplay'); d.value=d.value.slice(0,-1); }
 function calcClear(){ $('calcDisplay').value=''; $('calcResult').textContent=''; calcLast=null; }
-function calcKey(e){ if(e.key==='Enter'){ e.preventDefault(); calcEquals(); } }
 // Evaluate only arithmetic; reject anything with letters or other characters.
 function calcEval(raw){
   const expr=String(raw).replace(/×/g,'*').replace(/÷/g,'/').trim();
@@ -701,7 +699,7 @@ function renderCalcHist(){
          +   '<span class="ex">'+esc(parts[0])+'</span><span class="rv">'+esc(rv)+'</span></div>';
   }).join('');
 }
-function reuseCalc(v){ const d=$('calcDisplay'); d.value=String(v); calcLast=calcEval(String(v)); $('calcResult').textContent=Number(v).toLocaleString(); d.focus(); }
+function reuseCalc(v){ const d=$('calcDisplay'); d.value=String(v); calcLast=calcEval(String(v)); $('calcResult').textContent=Number(v).toLocaleString(); }
 
 /* ---- check values: prompt for manual entries, append them to the code ---- */
 // Scan/pick entry point: resolve any check values first (via popup), then open the card.

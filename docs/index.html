@@ -207,6 +207,44 @@ input,select{font-family:inherit;font-size:16px}
 .modal-actions{display:flex;gap:10px;margin-top:16px}
 .modal-actions .btn{height:52px}
 
+/* clear (X) button inside the search field */
+.search-field{position:relative}
+.search-field #searchInput{padding-right:44px}
+.search-x{position:absolute;right:6px;top:50%;transform:translateY(-50%);width:32px;height:32px;border:none;border-radius:50%;
+  background:var(--line);color:var(--ink-soft);font-size:20px;line-height:1;display:none;place-items:center;cursor:pointer}
+.search-x.show{display:grid}
+.search-x:active{filter:brightness(.9)}
+
+/* floating calculator button */
+.calc-fab{position:fixed;right:16px;bottom:16px;z-index:70;width:60px;height:60px;border:none;border-radius:50%;
+  background:var(--dept);color:#fff;font-size:26px;box-shadow:0 10px 26px rgba(20,26,31,.32);cursor:pointer;display:grid;place-items:center}
+.calc-fab:active{filter:brightness(.92)}
+
+/* calculator modal */
+.calc-card{max-width:340px}
+.calc-head{display:flex;align-items:center;justify-content:space-between;margin-bottom:10px}
+.calc-x{border:none;background:none;font-size:28px;line-height:1;color:var(--ink-soft);cursor:pointer;padding:0 4px}
+#calcDisplay{width:100%;height:54px;border:2px solid var(--line);border-radius:11px;background:#fff;padding:0 14px;text-align:right;
+  font-family:'JetBrains Mono';font-weight:700;font-size:22px;color:var(--ink);outline:none}
+#calcDisplay:focus{border-color:var(--dept)}
+.calc-result{text-align:right;font-family:'JetBrains Mono';font-weight:800;font-size:30px;color:var(--dept);min-height:38px;margin:6px 2px}
+.calc-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:8px}
+.calc-grid button{height:54px;border:1.5px solid var(--line);border-radius:12px;background:#fff;color:var(--ink);
+  font-family:'JetBrains Mono';font-weight:800;font-size:22px;display:grid;place-items:center;cursor:pointer;-webkit-user-select:none;user-select:none;touch-action:manipulation}
+.calc-grid button:active{background:var(--dept-soft);border-color:var(--dept)}
+.calc-grid button.op{color:var(--dept)}
+.calc-grid button.eq{background:var(--dept);border-color:var(--dept);color:#fff}
+.calc-grid button.clr{color:#b23b3b}
+.calc-use{margin-top:10px}
+.calc-use .btn{width:100%;height:50px}
+.calc-hist{margin-top:12px;border-top:1px dashed var(--line);padding-top:10px}
+.calc-hist .lbl{font-family:'JetBrains Mono';font-size:10px;letter-spacing:.14em;text-transform:uppercase;color:var(--ink-soft);margin-bottom:6px}
+.calc-hist .h{display:flex;justify-content:space-between;gap:8px;padding:7px 10px;border-radius:9px;background:var(--dept-soft);
+  margin-bottom:5px;cursor:pointer;font-family:'JetBrains Mono';font-size:13px}
+.calc-hist .h .ex{color:var(--ink-soft);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.calc-hist .h .rv{color:var(--dept);font-weight:800}
+.calc-hist .none{color:var(--ink-soft);font-size:12px}
+
 @media (min-width:560px){ .dept-card .sub{max-width:60%} }
 </style>
 </head>
@@ -271,7 +309,10 @@ input,select{font-family:inherit;font-size:16px}
           <span class="linkbtn" onclick="toggleSearch()" id="searchToggle">Search by description</span>
         </div>
         <div class="search-wrap hide" id="searchWrap" style="margin-top:10px">
-          <input id="searchInput" placeholder="type any part of the description or code" autocomplete="off">
+          <div class="search-field">
+            <input id="searchInput" placeholder="type any part of the description or code" autocomplete="off">
+            <button type="button" class="search-x" id="searchX" onclick="clearSearch()" aria-label="Clear search">×</button>
+          </div>
           <div class="results hide" id="results"></div>
         </div>
       </div>
@@ -305,6 +346,46 @@ input,select{font-family:inherit;font-size:16px}
   </div>
 </div>
 
+<!-- floating calculator -->
+<button type="button" class="calc-fab" id="calcFab" onclick="openCalc()" aria-label="Calculator">🧮</button>
+<div id="calcModal" class="modal hide" onclick="if(event.target===this)closeCalc()">
+  <div class="modal-card calc-card">
+    <div class="calc-head">
+      <div class="modal-title">Calculator</div>
+      <button type="button" class="calc-x" onclick="closeCalc()" aria-label="Close">×</button>
+    </div>
+    <input id="calcDisplay" inputmode="decimal" autocomplete="off" placeholder="0" onkeydown="calcKey(event)">
+    <div class="calc-result" id="calcResult"></div>
+    <div class="calc-grid">
+      <button type="button" class="clr" onclick="calcClear()">C</button>
+      <button type="button" onclick="calcPress('(')">(</button>
+      <button type="button" onclick="calcPress(')')">)</button>
+      <button type="button" class="op" onclick="calcPress('/')">÷</button>
+      <button type="button" onclick="calcPress('7')">7</button>
+      <button type="button" onclick="calcPress('8')">8</button>
+      <button type="button" onclick="calcPress('9')">9</button>
+      <button type="button" class="op" onclick="calcPress('*')">×</button>
+      <button type="button" onclick="calcPress('4')">4</button>
+      <button type="button" onclick="calcPress('5')">5</button>
+      <button type="button" onclick="calcPress('6')">6</button>
+      <button type="button" class="op" onclick="calcPress('-')">−</button>
+      <button type="button" onclick="calcPress('1')">1</button>
+      <button type="button" onclick="calcPress('2')">2</button>
+      <button type="button" onclick="calcPress('3')">3</button>
+      <button type="button" class="op" onclick="calcPress('+')">+</button>
+      <button type="button" onclick="calcBack()">⌫</button>
+      <button type="button" onclick="calcPress('0')">0</button>
+      <button type="button" onclick="calcPress('.')">.</button>
+      <button type="button" class="eq" onclick="calcEquals()">=</button>
+    </div>
+    <div class="calc-use"><button type="button" class="btn primary" id="calcUseBtn" onclick="calcUse()">Use this number ↑</button></div>
+    <div class="calc-hist">
+      <div class="lbl">Recent (last 5)</div>
+      <div id="calcHist"></div>
+    </div>
+  </div>
+</div>
+
 <script>
 /* ====== Backend config ======
    This page is static (GitHub Pages). It talks to a Cloudflare Worker that reads/writes the
@@ -315,7 +396,7 @@ var API_SECRET = '';
 
 /* Bump this on every page change — the number shows in the bottom-right corner so you can
    confirm a reload actually picked up the latest page (an old cached page has no tag). */
-var APP_VERSION = 'v22';
+var APP_VERSION = 'v23';
 
 /* Call a backend function: callApi('fn', [arg1, arg2]) -> Promise(result). */
 function callApi(fn, args){
@@ -527,11 +608,13 @@ function showNotFound(code){
 function toggleSearch(){ $('searchWrap').classList.contains('hide')?openSearch():closeSearch(); }
 function openSearch(){ $('searchWrap').classList.remove('hide'); $('searchToggle').textContent='Hide search'; setTimeout(()=>$('searchInput').focus(),40); }
 function openSearchWith(q){ openSearch(); $('searchInput').value=q; runSearch(); }
-function closeSearch(){ $('searchWrap').classList.add('hide'); $('searchToggle').textContent='Search by description'; $('results').classList.add('hide'); $('searchInput').value=''; }
+function closeSearch(){ $('searchWrap').classList.add('hide'); $('searchToggle').textContent='Search by description'; $('results').classList.add('hide'); $('searchInput').value=''; $('searchX').classList.remove('show'); }
+function clearSearch(){ const inp=$('searchInput'); inp.value=''; $('results').classList.add('hide'); $('searchX').classList.remove('show'); inp.focus(); }
 $('searchInput').addEventListener('input', runSearch);
 function runSearch(){
   const q=norm($('searchInput').value);
   const box=$('results');
+  $('searchX').classList.toggle('show', $('searchInput').value.length>0);
   if(q.length<1){ box.classList.add('hide'); return; }
   const hits=activeList().filter(it=> norm(it.desc).includes(q) || norm(it.code).includes(q)).slice(0,40);
   if(!hits.length){ box.innerHTML='<div class="empty">No matches</div>'; box.classList.remove('hide'); return; }
@@ -544,6 +627,81 @@ function runSearch(){
 }
 function listKey(){ return state.dept==='plastics'?'plastics':(state.metalKind==='ends'?'ends':'cans'); }
 function pickResult(i){ const it=DATA[listKey()][i]; closeSearch(); chooseItem(it); }
+
+/* ---- pop-up calculator ---- */
+// Remembers which count box was last active, so "Use this number" drops the
+// result straight back into it.
+var lastCountField=null;
+var calcLast=null;                         // the most recent computed result
+const CALC_HIST_KEY='invCalcHist_v1';      // { personName: ["12*24 = 288", ...] }
+function calcPerson(){ return ($('counterName') && $('counterName').value.trim()) || '—'; }
+function calcHistAll(){ try{ return JSON.parse(localStorage.getItem(CALC_HIST_KEY)||'{}'); }catch(_){ return {}; } }
+function calcHistFor(p){ const a=calcHistAll()[p]; return Array.isArray(a)?a:[]; }
+function calcHistPush(entry){
+  const all=calcHistAll(), p=calcPerson();
+  const list=(Array.isArray(all[p])?all[p]:[]).filter(x=>x!==entry); // no duplicates
+  list.unshift(entry);
+  all[p]=list.slice(0,5);                  // keep the last 5 per person
+  try{ localStorage.setItem(CALC_HIST_KEY, JSON.stringify(all)); }catch(_){}
+}
+function openCalc(){
+  $('calcModal').classList.remove('hide');
+  renderCalcHist();
+  setTimeout(()=>{ const d=$('calcDisplay'); d.focus(); if(d.select) d.select(); },50);
+}
+function closeCalc(){ $('calcModal').classList.add('hide'); }
+function calcPress(ch){ const d=$('calcDisplay'); d.value+=ch; d.focus(); }
+function calcBack(){ const d=$('calcDisplay'); d.value=d.value.slice(0,-1); }
+function calcClear(){ $('calcDisplay').value=''; $('calcResult').textContent=''; calcLast=null; }
+function calcKey(e){ if(e.key==='Enter'){ e.preventDefault(); calcEquals(); } }
+// Evaluate only arithmetic; reject anything with letters or other characters.
+function calcEval(raw){
+  const expr=String(raw).replace(/×/g,'*').replace(/÷/g,'/').trim();
+  if(!expr) return null;
+  if(!/^[0-9+\-*/(). %]+$/.test(expr)) return null;
+  try{
+    const v=Function('"use strict";return ('+expr+')')();
+    if(typeof v!=='number' || !isFinite(v)) return null;
+    return Math.round(v*1e6)/1e6;          // trim float noise
+  }catch(_){ return null; }
+}
+function calcEquals(){
+  const d=$('calcDisplay'); const expr=d.value.trim();
+  const v=calcEval(expr);
+  if(v===null){ $('calcResult').textContent='?'; calcLast=null; return; }
+  calcLast=v;
+  $('calcResult').textContent=v.toLocaleString();
+  d.value=String(v);                       // let them keep calculating from the result
+  calcHistPush(expr+' = '+v.toLocaleString());
+  renderCalcHist();
+}
+function calcUse(){
+  // Make sure we have a value even if they didn't hit "="
+  let v=calcLast;
+  if(v===null){ v=calcEval($('calcDisplay').value); }
+  if(v===null){ $('calcResult').textContent='?'; return; }
+  const target = lastCountField && $(lastCountField) ? $(lastCountField) : null;
+  if(target){
+    target.value=String(v);
+    target.dispatchEvent(new Event('input',{bubbles:true})); // fires calc() for the total
+    closeCalc();
+    target.focus(); if(target.select) target.select();
+  } else {
+    // No count box open — just show it so they can read/type it.
+    $('calcResult').textContent=Number(v).toLocaleString()+'  (open an item first to auto-fill)';
+  }
+}
+function renderCalcHist(){
+  const box=$('calcHist'); const list=calcHistFor(calcPerson());
+  if(!list.length){ box.innerHTML='<div class="none">No calculations yet.</div>'; return; }
+  box.innerHTML=list.map(function(item){
+    const parts=item.split(' = ');
+    const rv=(parts.length>1?parts[parts.length-1]:item).replace(/,/g,'');
+    return '<div class="h" onclick="reuseCalc(\''+esc(rv)+'\')">'
+         +   '<span class="ex">'+esc(parts[0])+'</span><span class="rv">'+esc(rv)+'</span></div>';
+  }).join('');
+}
+function reuseCalc(v){ const d=$('calcDisplay'); d.value=String(v); calcLast=calcEval(String(v)); $('calcResult').textContent=Number(v).toLocaleString(); d.focus(); }
 
 /* ---- check values: prompt for manual entries, append them to the code ---- */
 // Scan/pick entry point: resolve any check values first (via popup), then open the card.
@@ -660,12 +818,12 @@ function selectItem(it, edit){
 
         <div class="fld"><label>Full ${dept==='plastics'?'(pallets/boxes)':'(boxes)'}</label>
           <div class="biginput">
-            <input id="f_full" class="big" inputmode="numeric" enterkeyhint="next" value="${vFull}" oninput="calc()" onfocus="this.select()" onkeydown="cardEnter(event,'f_extra')">
+            <input id="f_full" class="big" inputmode="numeric" enterkeyhint="next" value="${vFull}" oninput="calc()" onfocus="this.select();lastCountField='f_full'" onkeydown="cardEnter(event,'f_extra')">
             <button type="button" class="stepbtn" onclick="nextField('f_extra')" aria-label="Next box">⏎</button>
           </div></div>
         <div class="fld"><label>Extra (loose)</label>
           <div class="biginput">
-            <input id="f_extra" class="big" inputmode="numeric" enterkeyhint="next" value="${vExtra}" oninput="calc()" onfocus="this.select()" onkeydown="cardEnter(event,'f_loc')">
+            <input id="f_extra" class="big" inputmode="numeric" enterkeyhint="next" value="${vExtra}" oninput="calc()" onfocus="this.select();lastCountField='f_extra'" onkeydown="cardEnter(event,'f_loc')">
             <button type="button" class="stepbtn" onclick="nextField('f_loc')" aria-label="Next box">⏎</button>
           </div></div>
 

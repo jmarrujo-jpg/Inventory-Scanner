@@ -50,7 +50,7 @@ export default {
       new Response(JSON.stringify(obj), { status, headers: { ...cors, 'Content-Type': 'application/json' } });
 
     if (request.method === 'OPTIONS') return new Response(null, { status: 204, headers: cors });
-    if (request.method === 'GET') return json({ ok: true, service: 'inventory-count-api', build: 'v7' }, 200);
+    if (request.method === 'GET') return json({ ok: true, service: 'inventory-count-api', build: 'v8' }, 200);
     if (request.method !== 'POST') return json({ ok: false, error: 'Method not allowed' }, 405);
 
     let payload;
@@ -290,7 +290,10 @@ async function makeSheets(env) {
       return values.slice(1); // drop the header row
     },
     async append(tab, row) {
-      return call(base + '/values/' + encodeURIComponent(tab) + ':append?valueInputOption=RAW&insertDataOption=INSERT_ROWS',
+      // Anchor the append at A1 so Sheets treats the header row (A1) as the table and always
+      // writes the new row in column A. Without the "!A1" anchor it auto-detects a table from the
+      // whole sheet and can latch onto a stray block off to the right (e.g. starting at column I).
+      return call(base + '/values/' + encodeURIComponent(tab + '!A1') + ':append?valueInputOption=RAW&insertDataOption=INSERT_ROWS',
         { method: 'POST', headers: { ...auth, 'Content-Type': 'application/json' }, body: JSON.stringify({ values: [row] }) });
     },
     // Overwrite values starting at a range (e.g. "Cans!A5").

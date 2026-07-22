@@ -513,7 +513,7 @@ var API_SECRET = '';
 
 /* Bump this on every page change — the number shows in the bottom-right corner so you can
    confirm a reload actually picked up the latest page (an old cached page has no tag). */
-var APP_VERSION = 'v39';
+var APP_VERSION = 'v40';
 
 /* Call a backend function: callApi('fn', [arg1, arg2]) -> Promise(result). */
 function callApi(fn, args){
@@ -1245,8 +1245,10 @@ function confirmLoc(bodyHtml){
   return new Promise(function(resolve){
     const m=$('warnModal');
     $('warnBody').innerHTML=bodyHtml;
+    kpHide(); tkHide();          // no docked keypad left behind/over the dialog
     m.classList.remove('hide');
-    function done(v){ m.classList.add('hide'); $('warnFix').onclick=null; $('warnOk').onclick=null; resolve(v); }
+    lockScroll();                // freeze the page so taps land on the buttons instead of scrolling
+    function done(v){ unlockScroll(); m.classList.add('hide'); $('warnFix').onclick=null; $('warnOk').onclick=null; resolve(v); }
     $('warnFix').onclick=function(){ done(false); };
     $('warnOk').onclick=function(){ done(true); };
   });

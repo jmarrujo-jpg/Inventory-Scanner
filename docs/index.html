@@ -513,7 +513,7 @@ var API_SECRET = '';
 
 /* Bump this on every page change — the number shows in the bottom-right corner so you can
    confirm a reload actually picked up the latest page (an old cached page has no tag). */
-var APP_VERSION = 'v41';
+var APP_VERSION = 'v42';
 
 /* Call a backend function: callApi('fn', [arg1, arg2]) -> Promise(result). */
 function callApi(fn, args){
@@ -1060,7 +1060,7 @@ function selectItem(it, edit){
     if(it.__manual) startId = $('f_desc') ? 'f_desc' : 'f_per';
     else if(!ed && !String(it.perUnit==null?'':it.perUnit).trim()) startId='f_per';
     const f=$(startId);
-    if(f){ f.focus(); if(f.select) f.select(); f.scrollIntoView({block:'center',behavior:'smooth'}); }
+    if(f){ f.focus(); if(f.select) f.select(); }   // the onfocus handler shows the pad + scrolls
   },80);
 }
 function calc(){
@@ -1069,8 +1069,26 @@ function calc(){
   const total=Math.round(full*per+extra);
   $('totalVal').textContent=total.toLocaleString();
 }
-/* Focus a box and scroll it into view (keeps it above the phone keyboard). */
-function nextField(id){ const el=$(id); if(el){ kpBind(id); el.focus(); if(el.select) el.select(); el.scrollIntoView({block:'center',behavior:'smooth'}); } }
+/* Focus a box (the onfocus handler shows the pad and scrolls it into view). */
+function nextField(id){ const el=$(id); if(el){ kpBind(id); el.focus(); if(el.select) el.select(); } }
+/* Height of whichever docked keyboard is currently up (0 if none). */
+function keypadH(){
+  const kp=$('cardKeypad'), tk=$('textKeypad');
+  if(kp && kp.classList.contains('show')) return kp.getBoundingClientRect().height;
+  if(tk && tk.classList.contains('show')) return tk.getBoundingClientRect().height;
+  return 0;
+}
+/* Scroll just enough to sit the anchor's bottom right above the docked keyboard — instead of
+   centering, which on a tall card + keypad padding jumps the page way too far down. For the
+   location box we anchor on the total strip so the location field AND the running total (plus the
+   boxes above) stay visible together. */
+function scrollFieldUp(el, anchorSel){
+  if(!el) return;
+  const anchor = anchorSel ? (document.querySelector(anchorSel)||el) : el;
+  const bottom = window.innerHeight - keypadH() - 14;
+  const r = anchor.getBoundingClientRect();
+  if(r.bottom > bottom || r.top < 8){ window.scrollBy({top: r.bottom - bottom, behavior:'smooth'}); }
+}
 
 /* ---- on-screen number pad on the card ---- */
 // iOS won't open its keyboard on the programmatic focus that follows a scan, so the count boxes
@@ -1085,7 +1103,7 @@ function kpBind(id){
   activeNumField=id;
   const l=$('kpField'); if(l){ l.textContent=({f_per:'Per unit',f_full:'Full',f_extra:'Extra',f_loc:'Location #'})[id]; }
   kpShow();
-  const el=$(id); if(el){ setTimeout(()=>el.scrollIntoView({block:'center',behavior:'smooth'}),40); } // keep it above the pad
+  const el=$(id); if(el){ setTimeout(()=>scrollFieldUp(el, id==='f_loc'?'.total-strip':null),40); } // keep it above the pad
 }
 // Called on box blur AND globally on focusin: keep the pad only while focus stays on a count box
 // or on the keypad itself; otherwise tuck it away.
@@ -1165,7 +1183,7 @@ function tkBind(id){
   activeTextField=id;
   const l=$('tkField'); if(l){ l.textContent=({modalInput:'value',f_desc:'Description',f_weight:'Weight',f_type:'Type'})[id]||'value'; }
   tkShow();
-  const el=$(id); if(el){ setTimeout(()=>el.scrollIntoView({block:'center',behavior:'smooth'}),40); }
+  const el=$(id); if(el){ setTimeout(()=>scrollFieldUp(el),40); }
 }
 function tkOnBlur(){
   setTimeout(function(){

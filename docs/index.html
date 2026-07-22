@@ -513,7 +513,7 @@ var API_SECRET = '';
 
 /* Bump this on every page change — the number shows in the bottom-right corner so you can
    confirm a reload actually picked up the latest page (an old cached page has no tag). */
-var APP_VERSION = 'v40';
+var APP_VERSION = 'v41';
 
 /* Call a backend function: callApi('fn', [arg1, arg2]) -> Promise(result). */
 function callApi(fn, args){
@@ -1221,7 +1221,7 @@ function clearCard(){ clearCardOnly(); $('notFound').classList.add('hide'); focu
 var LOC_JUMP = 15;   // how far (in location number) counts as "unexpectedly far"
 function locWarning(loc){
   const p = parseLoc(loc);
-  if(!p.bldg || p.num==='') return null;
+  if(p.num==='') return null;
   const num = Number(p.num);
   if(!isFinite(num)) return null;
   if(num>=900 && num<=999) return null;    // 900s are staging locations — legitimately "far", never warn
@@ -1229,12 +1229,12 @@ function locWarning(loc){
   const refs = [];
   for(let i=0;i<list.length && refs.length<5;i++){
     const q = parseLoc(list[i].loc);
-    if(q.bldg===p.bldg && q.num!==''){ const n=Number(q.num); if(isFinite(n)) refs.push(n); }
+    if(q.bldg===p.bldg && q.num!==''){ const n=Number(q.num); if(isFinite(n) && !(n>=900&&n<=999)) refs.push(n); }
   }
-  if(refs.length<2) return null;           // not enough context to judge yet
+  if(refs.length<1) return null;           // need at least one prior spot to compare against
   const nearest = Math.min.apply(null, refs.map(r=>Math.abs(r-num)));
   if(nearest<=LOC_JUMP) return null;       // close to where you've been — fine
-  const pad = n => p.bldg+'-'+String(n).padStart(3,'0');
+  const pad = n => (p.bldg?p.bldg+'-':'')+String(n).padStart(3,'0');
   const lo=Math.min.apply(null,refs), hi=Math.max.apply(null,refs);
   const range = lo===hi ? pad(lo) : (pad(lo)+' … '+pad(hi));
   const dupe = list.some(e=>{ const q=parseLoc(e.loc); return q.bldg===p.bldg && Number(q.num)===num; });

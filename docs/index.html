@@ -96,8 +96,9 @@ input,select{font-family:inherit;font-size:16px}
 .scan-input-wrap .readout{position:absolute;left:14px;top:50%;transform:translateY(-50%);color:var(--dept-accent);
   font-family:'JetBrains Mono';font-weight:700;pointer-events:none;opacity:.5}
 #scanInput{width:100%;height:var(--tap);border:2px solid var(--dept);border-radius:11px;background:#fff;
-  padding:0 16px 0 40px;font-family:'JetBrains Mono';font-weight:700;font-size:22px;letter-spacing:.02em;color:var(--ink);outline:none}
+  padding:0 46px 0 40px;font-family:'JetBrains Mono';font-weight:700;font-size:22px;letter-spacing:.02em;color:var(--ink);outline:none}
 #scanInput:focus{box-shadow:0 0 0 4px var(--dept-soft)}
+.scan-x{position:absolute;right:8px;top:50%;transform:translateY(-50%)}
 .scan-hint{margin-top:8px;font-size:13px;color:var(--ink-soft);display:flex;justify-content:space-between;align-items:center;gap:10px}
 .linkbtn{color:var(--dept);font-weight:700;font-size:13px;text-decoration:underline;text-underline-offset:2px;cursor:pointer}
 
@@ -167,6 +168,21 @@ input,select{font-family:inherit;font-size:16px}
 .kp-grid button.is-press,.calc-grid button.is-press,.kp-calc.is-press{filter:brightness(.82);transform:scale(.94)}
 /* leave room to scroll the active field above the docked pad */
 body.kp-open #count{padding-bottom:290px}
+/* alphanumeric keyboard (check-value prompt, Weight, Type) — sits above the modal (z 80) */
+.tkeypad{z-index:90}
+.tk-grid{max-width:520px;margin:0 auto}
+.tk-row{display:flex;gap:5px;justify-content:center;margin-bottom:5px}
+.tk-grid button{flex:1 1 0;min-width:0;height:46px;border:1px solid #c7ccd1;border-radius:8px;background:#fff;color:var(--ink);
+  font-family:'JetBrains Mono';font-weight:800;font-size:18px;display:grid;place-items:center;cursor:pointer;
+  -webkit-user-select:none;user-select:none;touch-action:manipulation;box-shadow:0 1px 0 #b8bec4;transition:filter .06s ease,transform .06s ease}
+.tk-grid button:active{background:var(--dept-soft);border-color:var(--dept)}
+.tk-grid button.is-press{filter:brightness(.82);transform:scale(.94)}
+.tk-grid button.tk-wide{flex:3 1 0;font-size:12px;letter-spacing:.1em;text-transform:uppercase;color:var(--ink-soft)}
+.tk-grid button.tk-back{color:var(--ink-soft);font-size:20px}
+.tk-grid button.tk-go{background:var(--ok);border-color:var(--ok);color:#fff;font-size:13px;letter-spacing:.05em;text-transform:uppercase}
+body.tk-open #count{padding-bottom:340px}
+body.tk-open .modal:not(.hide){justify-content:flex-start}
+body.tk-open .modal-card{margin-top:12px;margin-bottom:12px}
 
 .total-strip{grid-column:1/-1;background:var(--dept);color:#fff;border-radius:11px;padding:12px 16px;
   display:flex;justify-content:space-between;align-items:center;margin:2px 0 12px}
@@ -336,6 +352,7 @@ html.modal-lock body{position:fixed;left:0;right:0;width:100%;overflow:hidden}
           <span class="readout">›</span>
           <input id="scanInput" inputmode="text" autocomplete="off" autocapitalize="characters"
                  spellcheck="false" placeholder="scan or type code, then Enter">
+          <button type="button" class="search-x scan-x" id="scanX" onclick="clearScan()" aria-label="Clear scan">×</button>
         </div>
         <div class="scan-hint">
           <span id="scanCountHint"></span>
@@ -371,7 +388,7 @@ html.modal-lock body{position:fixed;left:0;right:0;width:100%;overflow:hidden}
   <div class="modal-card">
     <div class="modal-title" id="modalTitle"></div>
     <div class="modal-hint" id="modalHint"></div>
-    <input id="modalInput" autocomplete="off" autocapitalize="characters" spellcheck="false" placeholder="enter value">
+    <input id="modalInput" inputmode="none" autocomplete="off" autocapitalize="characters" spellcheck="false" placeholder="enter value" onfocus="tkBind('modalInput')" onblur="tkOnBlur()">
     <div class="modal-actions">
       <button class="btn ghost" id="modalCancel">Cancel</button>
       <button class="btn primary" id="modalOk">Add</button>
@@ -463,6 +480,13 @@ html.modal-lock body{position:fixed;left:0;right:0;width:100%;overflow:hidden}
   </div>
 </div>
 
+<!-- Alphanumeric on-screen keyboard for text fields (check-value prompt, Weight, Type). The paired
+     scanner registers as a hardware keyboard, so iOS never shows its soft keyboard for these. -->
+<div class="keypad tkeypad" id="textKeypad" aria-hidden="true">
+  <div class="kp-target"><span>Typing into: <b id="tkField">value</b></span></div>
+  <div class="tk-grid" id="tkGrid"></div>
+</div>
+
 <script>
 /* ====== Backend config ======
    This page is static (GitHub Pages). It talks to a Cloudflare Worker that reads/writes the
@@ -473,7 +497,7 @@ var API_SECRET = '';
 
 /* Bump this on every page change — the number shows in the bottom-right corner so you can
    confirm a reload actually picked up the latest page (an old cached page has no tag). */
-var APP_VERSION = 'v34';
+var APP_VERSION = 'v35';
 
 /* Call a backend function: callApi('fn', [arg1, arg2]) -> Promise(result). */
 function callApi(fn, args){
@@ -709,20 +733,34 @@ $('scanInput').addEventListener('keydown', e=>{
 // open on an exact match, so a partial code while typing never shows a "not found" error.
 let scanTimer;
 $('scanInput').addEventListener('input', ()=>{
+  $('scanX').classList.toggle('show', $('scanInput').value.trim().length>0);
   clearTimeout(scanTimer);
   scanTimer=setTimeout(()=>{
     const raw=$('scanInput').value.trim();
     if(!raw) return;
+    if(looksLikeDate(raw)){ clearScan(); toast('📅 Date barcode ignored — scan the product code'); return; }
     const it=activeIdx()[norm(raw)];
-    if(it){ chooseItem(it); $('scanInput').value=''; }
+    if(it){ chooseItem(it); clearScan(false); }
   }, 120);
 });
 function doScan(){
   const raw=$('scanInput').value.trim();
   if(!raw) return;
+  if(looksLikeDate(raw)){ clearScan(); toast('📅 Date barcode ignored — scan the product code'); return; }
   const it=activeIdx()[norm(raw)];
-  if(it){ chooseItem(it); $('scanInput').value=''; }
+  if(it){ chooseItem(it); clearScan(false); }
   else showNotFound(raw);
+}
+// Clear the scan box (X button + after a match/date). refocus=false skips stealing focus
+// from a freshly-opened card.
+function clearScan(refocus){ const el=$('scanInput'); if(!el) return; el.value=''; $('scanX').classList.remove('show'); if(refocus!==false) el.focus(); }
+// The barcodes have a date label right next to the product label, so a mis-scan lands the date
+// in the box. Convention is "MM/DD/YYYY 01" (01/02/03 = shift), but it's applied inconsistently
+// (separators/spacing vary). We anchor on a real 4-digit year (19xx/20xx) surrounded by two date
+// separators so a hyphenated part number like "12-34-5678" is NOT mistaken for a date.
+function looksLikeDate(s){
+  return /\b\d{1,2}\s*[\/\-.]\s*\d{1,2}\s*[\/\-.]\s*(19|20)\d{2}\b/.test(s)   // MM/DD/YYYY
+      || /\b(19|20)\d{2}\s*[\/\-.]\s*\d{1,2}\s*[\/\-.]\s*\d{1,2}\b/.test(s);  // YYYY/MM/DD
 }
 function showNotFound(code){
   $('notFound').classList.remove('hide');
@@ -872,7 +910,7 @@ function askValue(title, hint){
     const m=$('modal'), inp=$('modalInput');
     $('modalTitle').textContent=title; $('modalHint').textContent=hint||''; inp.value='';
     m.classList.remove('hide'); setTimeout(()=>inp.focus(),50);
-    function finish(v){ m.classList.add('hide'); $('modalOk').onclick=null; $('modalCancel').onclick=null; inp.onkeydown=null; resolve(v); }
+    function finish(v){ tkHide(); m.classList.add('hide'); $('modalOk').onclick=null; $('modalCancel').onclick=null; inp.onkeydown=null; resolve(v); }
     $('modalOk').onclick=function(){ const v=inp.value.trim(); if(!v){ inp.focus(); return; } finish(v); };
     $('modalCancel').onclick=function(){ finish(null); };
     inp.onkeydown=function(e){
@@ -936,13 +974,13 @@ function selectItem(it, edit){
   if(dept==='metals' && kind==='ends'){
     extraFields=`
       <div class="fld"><label>Weight</label>
-        <input id="f_weight" class="mono" value="${esc(inputVal(it.weight))}" placeholder="${inputPh(it.weight)||'enter weight'}"></div>
+        <input id="f_weight" class="mono" inputmode="none" value="${esc(inputVal(it.weight))}" placeholder="${inputPh(it.weight)||'enter weight'}" onfocus="tkBind('f_weight')" onblur="tkOnBlur()"></div>
       <div class="fld"><label>Type</label>
-        <input id="f_type" class="mono" value="${esc(inputVal(it.type))}" placeholder="${inputPh(it.type)||'enter type'}"></div>`;
+        <input id="f_type" class="mono" inputmode="none" value="${esc(inputVal(it.type))}" placeholder="${inputPh(it.type)||'enter type'}" onfocus="tkBind('f_type')" onblur="tkOnBlur()"></div>`;
   } else if(dept==='plastics'){
     extraFields=`
       <div class="fld full"><label>Type</label>
-        <input id="f_type" value="${esc(inputVal(it.type))}" placeholder="enter type"></div>`;
+        <input id="f_type" inputmode="none" value="${esc(inputVal(it.type))}" placeholder="enter type" onfocus="tkBind('f_type')" onblur="tkOnBlur()"></div>`;
   }
 
   $('cardMount').innerHTML=`
@@ -1001,7 +1039,7 @@ function nextField(id){ const el=$(id); if(el){ kpBind(id); el.focus(); if(el.se
 // single pointerdown (no mouse+touch double-firing) and edit whichever box is active.
 var activeNumField='f_full';
 function kpIsField(id){ return id==='f_per'||id==='f_full'||id==='f_extra'||id==='f_loc'; }
-function kpShow(){ $('cardKeypad').classList.add('show'); $('cardKeypad').setAttribute('aria-hidden','false'); document.body.classList.add('kp-open'); }
+function kpShow(){ tkHide(); $('cardKeypad').classList.add('show'); $('cardKeypad').setAttribute('aria-hidden','false'); document.body.classList.add('kp-open'); }
 function kpHide(){ kpBackStop(); $('cardKeypad').classList.remove('show'); $('cardKeypad').setAttribute('aria-hidden','true'); document.body.classList.remove('kp-open'); }
 function kpBind(id){
   if(!kpIsField(id)) return;
@@ -1048,11 +1086,78 @@ function kpBackStop(){ clearTimeout(kpRepeatTO); clearInterval(kpRepeatIV); kpRe
 function kpOpenCalc(e){ if(e){ e.preventDefault(); } openCalc(); }
 // Visual press feedback: briefly darken/shrink any keypad or calculator button that's pressed.
 document.addEventListener('pointerdown', function(ev){
-  const b = ev.target.closest('.kp-grid button, .calc-grid button, .kp-calc');
+  const b = ev.target.closest('.kp-grid button, .tk-grid button, .calc-grid button, .kp-calc');
   if(!b) return;
   b.classList.add('is-press');
   setTimeout(function(){ b.classList.remove('is-press'); }, 160);
 });
+/* ---- on-screen alphanumeric keyboard for text fields ----
+   The check-value prompt and the Weight/Type boxes need letters as well as digits, and the paired
+   scanner suppresses the iOS soft keyboard, so those fields use inputmode=none and this docked
+   keyboard. It's a sibling of the numeric pad; only one of the two is ever shown at a time. */
+var activeTextField=null;
+var TK_ROWS=[
+  ['1','2','3','4','5','6','7','8','9','0'],
+  ['Q','W','E','R','T','Y','U','I','O','P'],
+  ['A','S','D','F','G','H','J','K','L'],
+  ['Z','X','C','V','B','N','M']
+];
+function tkBuild(){
+  const g=$('tkGrid'); if(!g||g.dataset.built) return; g.dataset.built='1';
+  let html=TK_ROWS.map(function(row){
+    return '<div class="tk-row">'+row.map(function(k){
+      return '<button type="button" onpointerdown="tkTap(event,\''+k+'\')">'+k+'</button>';
+    }).join('')+'</div>';
+  }).join('');
+  html+='<div class="tk-row">'
+    + '<button type="button" onpointerdown="tkTap(event,\'-\')">-</button>'
+    + '<button type="button" onpointerdown="tkTap(event,\'/\')">/</button>'
+    + '<button type="button" onpointerdown="tkTap(event,\'.\')">.</button>'
+    + '<button type="button" class="tk-wide" onpointerdown="tkTap(event,\' \')">space</button>'
+    + '<button type="button" class="tk-back" onpointerdown="tkBackStart(event)" onpointerup="tkBackStop()" onpointerleave="tkBackStop()" onpointercancel="tkBackStop()" aria-label="Delete (hold to clear)">⌫</button>'
+    + '<button type="button" class="tk-go" onpointerdown="tkDone(event)" aria-label="Done">Done</button>'
+    + '</div>';
+  g.innerHTML=html;
+}
+function tkIsField(id){ return id==='modalInput'||id==='f_weight'||id==='f_type'; }
+function tkShow(){ tkBuild(); kpHide(); $('textKeypad').classList.add('show'); $('textKeypad').setAttribute('aria-hidden','false'); document.body.classList.add('tk-open'); }
+function tkHide(){ tkBackStop(); $('textKeypad').classList.remove('show'); $('textKeypad').setAttribute('aria-hidden','true'); document.body.classList.remove('tk-open'); }
+function tkBind(id){
+  if(!tkIsField(id)) return;
+  activeTextField=id;
+  const l=$('tkField'); if(l){ l.textContent=({modalInput:'value',f_weight:'Weight',f_type:'Type'})[id]||'value'; }
+  tkShow();
+  const el=$(id); if(el){ setTimeout(()=>el.scrollIntoView({block:'center',behavior:'smooth'}),40); }
+}
+function tkOnBlur(){
+  setTimeout(function(){
+    const a=document.activeElement;
+    if(a && (tkIsField(a.id) || $('textKeypad').contains(a))) return;
+    tkHide();
+  },0);
+}
+document.addEventListener('focusin', function(ev){
+  if(!$('textKeypad').classList.contains('show')) return;
+  const a=ev.target;
+  if(a && (tkIsField(a.id) || $('textKeypad').contains(a))) return;
+  tkHide();
+});
+function tkTap(e,ch){
+  if(e){ e.preventDefault(); }
+  const el=$(activeTextField); if(!el) return;
+  el.value=(el.value||'')+ch;
+  el.dispatchEvent(new Event('input',{bubbles:true}));
+}
+var tkRepeatTO=null, tkRepeatIV=null;
+function tkDoBack(){ const el=$(activeTextField); if(!el||!el.value){ tkBackStop(); return; } el.value=el.value.slice(0,-1); el.dispatchEvent(new Event('input',{bubbles:true})); }
+function tkBackStart(e){ if(e){ e.preventDefault(); } tkDoBack(); clearTimeout(tkRepeatTO); tkRepeatTO=setTimeout(function(){ tkRepeatIV=setInterval(tkDoBack,60); },400); }
+function tkBackStop(){ clearTimeout(tkRepeatTO); clearInterval(tkRepeatIV); tkRepeatIV=null; }
+function tkDone(e){
+  if(e){ e.preventDefault(); }
+  if(activeTextField==='modalInput'){ const ok=$('modalOk'); if(ok) ok.click(); return; }
+  const el=$(activeTextField); tkHide(); if(el) el.blur();
+}
+
 /* Enter moves through the boxes: Full -> Extra -> Location -> save */
 function cardEnter(e, target){
   if(e.key!=='Enter') return;
@@ -1103,6 +1208,10 @@ function saveEntry(){
       toast('Saved · '+total.toLocaleString()+' units');
       clearCardOnly();
       focusScan();
+      // Re-read from the sheet so the just-added row gets its real tab/row reference. Without this
+      // the optimistic entry has no __tab/__row, so editing it immediately failed until an app
+      // reload (which re-fetched with real references). This makes re-entry work right away.
+      refreshEntries();
     })
     .catch(function(err){
       if(btn){ btn.disabled=false; btn.textContent='\u2713 Save entry'; }

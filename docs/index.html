@@ -513,7 +513,7 @@ var API_SECRET = '';
 
 /* Bump this on every page change — the number shows in the bottom-right corner so you can
    confirm a reload actually picked up the latest page (an old cached page has no tag). */
-var APP_VERSION = 'v38';
+var APP_VERSION = 'v39';
 
 /* Call a backend function: callApi('fn', [arg1, arg2]) -> Promise(result). */
 function callApi(fn, args){
@@ -1224,6 +1224,7 @@ function locWarning(loc){
   if(!p.bldg || p.num==='') return null;
   const num = Number(p.num);
   if(!isFinite(num)) return null;
+  if(num>=900 && num<=999) return null;    // 900s are staging locations — legitimately "far", never warn
   const list = activeEntries();            // newest-first
   const refs = [];
   for(let i=0;i<list.length && refs.length<5;i++){

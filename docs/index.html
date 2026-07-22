@@ -501,7 +501,7 @@ var API_SECRET = '';
 
 /* Bump this on every page change — the number shows in the bottom-right corner so you can
    confirm a reload actually picked up the latest page (an old cached page has no tag). */
-var APP_VERSION = 'v36';
+var APP_VERSION = 'v37';
 
 /* Call a backend function: callApi('fn', [arg1, arg2]) -> Promise(result). */
 function callApi(fn, args){
@@ -750,11 +750,17 @@ $('scanInput').addEventListener('input', ()=>{
 function doScan(){
   const raw=$('scanInput').value.trim();
   if(!raw) return;
-  if(looksLikeDate(raw)){ clearScan(); toast('📅 Date barcode ignored — scan the product code'); return; }
   const it=activeIdx()[norm(raw)];
-  if(it){ chooseItem(it); clearScan(false); }
-  else showNotFound(raw);
+  if(it){ chooseItem(it); clearScan(false); return; }   // a real product code always wins
+  if(looksLikeDate(raw)){ clearScan(); toast('📅 Date barcode ignored — scan the product code'); return; }
+  if(isQuantity(raw)){ clearScan(); toast('🔢 Quantity ignored — scan the product code'); return; }
+  showNotFound(raw);
 }
+// A quantity barcode is just a plain number (optionally with commas/spaces, e.g. "1,200"). Since
+// every real product code lives in the lookup, a not-found plain number is a quantity, not a code,
+// so we discard it and let the user scan the product again. (Codes with letters — 25068-W,
+// 401 OVERCAP… — never match this, so "Add manually" still works for them.)
+function isQuantity(s){ return /^\d[\d\s,]*$/.test(s); }
 // Clear the scan box (X button + after a match/date). refocus=false skips stealing focus
 // from a freshly-opened card.
 function clearScan(refocus){ const el=$('scanInput'); if(!el) return; el.value=''; $('scanX').classList.remove('show'); if(refocus!==false) el.focus(); }

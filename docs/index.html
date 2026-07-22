@@ -400,6 +400,18 @@ html.modal-lock body{position:fixed;left:0;right:0;width:100%;overflow:hidden}
   </div>
 </div>
 
+<!-- location sanity warning (entered spot is far from where you've been counting) -->
+<div id="warnModal" class="modal hide">
+  <div class="modal-card">
+    <div class="modal-title">Check location</div>
+    <div class="gate-warn" id="warnBody"></div>
+    <div class="modal-actions">
+      <button class="btn primary" id="warnFix">✎ Fix location</button>
+      <button class="btn ghost" id="warnOk">It’s correct</button>
+    </div>
+  </div>
+</div>
+
 <div id="calcModal" class="modal hide" onclick="if(event.target===this)closeCalc()">
   <div class="modal-card calc-card">
     <div class="calc-head">
@@ -501,7 +513,7 @@ var API_SECRET = '';
 
 /* Bump this on every page change — the number shows in the bottom-right corner so you can
    confirm a reload actually picked up the latest page (an old cached page has no tag). */
-var APP_VERSION = 'v37';
+var APP_VERSION = 'v38';
 
 /* Call a backend function: callApi('fn', [arg1, arg2]) -> Promise(result). */
 function callApi(fn, args){
@@ -1202,11 +1214,53 @@ function cardEnter(e, target){
 function clearCardOnly(){ kpHide(); $('cardMount').innerHTML=''; state.current=null; state.editIndex=null; }
 function clearCard(){ clearCardOnly(); $('notFound').classList.add('hide'); focusScan(); }
 
+/* ---- location sanity check ----
+   A common slip is dropping a digit (meaning M-088 but typing M-008 -> 8 instead of 88). We compare
+   the entered spot to the last few locations counted in the same building; if it's much further than
+   any of them, we flag it. This also catches jumping back to an already-counted area mid-count. */
+var LOC_JUMP = 15;   // how far (in location number) counts as "unexpectedly far"
+function locWarning(loc){
+  const p = parseLoc(loc);
+  if(!p.bldg || p.num==='') return null;
+  const num = Number(p.num);
+  if(!isFinite(num)) return null;
+  const list = activeEntries();            // newest-first
+  const refs = [];
+  for(let i=0;i<list.length && refs.length<5;i++){
+    const q = parseLoc(list[i].loc);
+    if(q.bldg===p.bldg && q.num!==''){ const n=Number(q.num); if(isFinite(n)) refs.push(n); }
+  }
+  if(refs.length<2) return null;           // not enough context to judge yet
+  const nearest = Math.min.apply(null, refs.map(r=>Math.abs(r-num)));
+  if(nearest<=LOC_JUMP) return null;       // close to where you've been — fine
+  const pad = n => p.bldg+'-'+String(n).padStart(3,'0');
+  const lo=Math.min.apply(null,refs), hi=Math.max.apply(null,refs);
+  const range = lo===hi ? pad(lo) : (pad(lo)+' … '+pad(hi));
+  const dupe = list.some(e=>{ const q=parseLoc(e.loc); return q.bldg===p.bldg && Number(q.num)===num; });
+  if(dupe) return '<b>'+esc(loc)+'</b> was already counted this session and it’s far from where you’ve been counting (<b>'+range+'</b>).<br>Adding more stock here, or is the number a typo (e.g. <b>8</b> vs <b>88</b>)?';
+  return '<b>'+esc(loc)+'</b> is further than expected — you’ve been counting around <b>'+range+'</b>.<br>Double-check the number (e.g. <b>8</b> vs <b>88</b>).';
+}
+function confirmLoc(bodyHtml){
+  return new Promise(function(resolve){
+    const m=$('warnModal');
+    $('warnBody').innerHTML=bodyHtml;
+    m.classList.remove('hide');
+    function done(v){ m.classList.add('hide'); $('warnFix').onclick=null; $('warnOk').onclick=null; resolve(v); }
+    $('warnFix').onclick=function(){ done(false); };
+    $('warnOk').onclick=function(){ done(true); };
+  });
+}
+
 /* ---- save ---- */
-function saveEntry(){
+async function saveEntry(){
   const per=asNum($('f_per').value), full=asNum($('f_full').value), extra=asNum($('f_extra').value);
   const total=Math.round(full*per+extra);
   if(total<=0){ toast('Enter a count greater than 0','err'); return; }
+  const warn = locWarning(composeLoc());
+  if(warn){
+    const ok = await confirmLoc(warn);
+    if(!ok){ const f=$('f_loc'); if(f){ f.focus(); if(f.select) f.select(); kpBind('f_loc'); } return; }  // "Fix" -> back to the box
+  }
   const now=new Date();
   const ts=now.getFullYear()+'-'+String(now.getMonth()+1).padStart(2,'0')+'-'+String(now.getDate()).padStart(2,'0')
     +' '+String(now.getHours()).padStart(2,'0')+':'+String(now.getMinutes()).padStart(2,'0')+':'+String(now.getSeconds()).padStart(2,'0');

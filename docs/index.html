@@ -170,16 +170,19 @@ input,select{font-family:inherit;font-size:16px}
 body.kp-open #count{padding-bottom:290px}
 /* alphanumeric keyboard (check-value prompt, Weight, Type) — sits above the modal (z 80) */
 .tkeypad{z-index:90}
-.tk-grid{max-width:520px;margin:0 auto}
-.tk-row{display:flex;gap:5px;justify-content:center;margin-bottom:5px}
-.tk-grid button{flex:1 1 0;min-width:0;height:46px;border:1px solid #c7ccd1;border-radius:8px;background:#fff;color:var(--ink);
-  font-family:'JetBrains Mono';font-weight:800;font-size:18px;display:grid;place-items:center;cursor:pointer;
+.tk-grid{max-width:500px;margin:0 auto}
+.tk-row{display:flex;gap:6px;justify-content:center;margin-bottom:6px}
+/* fixed-width keys so shorter rows stay aligned (a 10-column grid, like a real keyboard) */
+.tk-grid button{flex:0 0 calc((100% - 54px)/10);height:44px;border:1px solid #c7ccd1;border-radius:7px;background:#fff;color:var(--ink);
+  font-family:'JetBrains Mono';font-weight:700;font-size:17px;display:grid;place-items:center;cursor:pointer;padding:0;
   -webkit-user-select:none;user-select:none;touch-action:manipulation;box-shadow:0 1px 0 #b8bec4;transition:filter .06s ease,transform .06s ease}
 .tk-grid button:active{background:var(--dept-soft);border-color:var(--dept)}
 .tk-grid button.is-press{filter:brightness(.82);transform:scale(.94)}
-.tk-grid button.tk-wide{flex:3 1 0;font-size:12px;letter-spacing:.1em;text-transform:uppercase;color:var(--ink-soft)}
-.tk-grid button.tk-back{color:var(--ink-soft);font-size:20px}
-.tk-grid button.tk-go{background:var(--ok);border-color:var(--ok);color:#fff;font-size:13px;letter-spacing:.05em;text-transform:uppercase}
+.tk-grid button.tk-back{flex:0 0 calc(((100% - 54px)/10)*1.6 + 6px);color:var(--ink-soft);font-size:19px}
+/* bottom utility row: symbols + wide space + Done (flex, not the fixed 10-col grid) */
+.tk-row.tk-util button{flex:1 1 0}
+.tk-row.tk-util .tk-wide{flex:4 1 0;font-size:12px;letter-spacing:.08em;text-transform:uppercase;color:var(--ink-soft)}
+.tk-row.tk-util .tk-go{flex:2 1 0;background:var(--ok);border-color:var(--ok);color:#fff;font-size:13px;letter-spacing:.05em;text-transform:uppercase}
 body.tk-open #count{padding-bottom:340px}
 body.tk-open .modal:not(.hide){justify-content:flex-start}
 body.tk-open .modal-card{margin-top:12px;margin-bottom:12px}
@@ -229,6 +232,7 @@ body.tk-open .modal-card{margin-top:12px;margin-bottom:12px}
 
 .notfound{background:#FFF4F1;border:1px solid #F3C6BC;color:#8a2d1c;border-radius:12px;padding:14px 16px;font-size:14px;display:flex;gap:10px;align-items:flex-start}
 .notfound b{color:var(--danger)}
+.nf-add{display:block;height:44px;padding:0 18px;margin-top:12px;font-size:15px}
 
 /* build/version tag */
 .buildtag{position:fixed;right:8px;bottom:6px;z-index:60;font-family:'JetBrains Mono',ui-monospace,monospace;
@@ -497,7 +501,7 @@ var API_SECRET = '';
 
 /* Bump this on every page change — the number shows in the bottom-right corner so you can
    confirm a reload actually picked up the latest page (an old cached page has no tag). */
-var APP_VERSION = 'v35';
+var APP_VERSION = 'v36';
 
 /* Call a backend function: callApi('fn', [arg1, arg2]) -> Promise(result). */
 function callApi(fn, args){
@@ -764,8 +768,17 @@ function looksLikeDate(s){
 }
 function showNotFound(code){
   $('notFound').classList.remove('hide');
-  $('notFound').innerHTML=`<span>⚠</span><div><b>“${esc(code)}” not found</b> in ${state.dept==='plastics'?'Plastics':(state.metalKind)}.<br>Check the department/tab, or <span class="linkbtn" onclick="openSearchWith('${esc(code)}')">search by description</span>.</div>`;
+  $('notFound').innerHTML=`<span>⚠</span><div><b>“${esc(code)}” not found</b> in ${state.dept==='plastics'?'Plastics':(state.metalKind)}.<br>
+    <span class="linkbtn" onclick="openSearchWith('${esc(code)}')">Search by description</span>
+    <button type="button" class="btn primary nf-add" onclick="addManual('${esc(code)}')">➕ Add manually</button></div>`;
   clearCardOnly();
+}
+// Count a barcode that isn't in the lookup: open a blank card with the scanned code, start at the
+// Description (alphanumeric keyboard), then flow through the rest and save like any other entry.
+function addManual(code){
+  $('notFound').classList.add('hide');
+  clearScan(false);
+  selectItem({ code:code, desc:'', weight:'', type:'', perUnit:'', __manual:true });
 }
 
 /* ---- search ---- */
@@ -993,7 +1006,7 @@ function selectItem(it, edit){
     <div class="card-body">
       <div class="grid">
         <div class="fld full"><label>${codeLabel}</label><input id="f_code" class="mono" value="${esc(it.code||'')}"></div>
-        <div class="fld full"><label>Description</label><input id="f_desc" value="${esc(it.desc)}"></div>
+        <div class="fld full"><label>Description</label><input id="f_desc" inputmode="none" value="${esc(it.desc)}" onfocus="tkBind('f_desc')" onblur="tkOnBlur()"></div>
         ${extraFields}
         <div class="fld full"><label>${perLabel}</label><input id="f_per" class="mono" inputmode="none" value="${it.perUnit??''}" oninput="calc()" onfocus="this.select();kpBind('f_per')" onblur="kpOnBlur()"></div>
 
@@ -1022,7 +1035,15 @@ function selectItem(it, edit){
     </div>
    </div>`;
   calc();
-  setTimeout(()=>{ const f=$('f_full'); if(f){ f.focus(); if(f.select) f.select(); f.scrollIntoView({block:'center',behavior:'smooth'}); } },80);
+  // Where to land first: manual add starts at Description; an item with no Per Pallet quantity
+  // starts there so you fill it in; otherwise the Full box (perUnit already known).
+  setTimeout(()=>{
+    let startId='f_full';
+    if(it.__manual) startId = $('f_desc') ? 'f_desc' : 'f_per';
+    else if(!ed && !String(it.perUnit==null?'':it.perUnit).trim()) startId='f_per';
+    const f=$(startId);
+    if(f){ f.focus(); if(f.select) f.select(); f.scrollIntoView({block:'center',behavior:'smooth'}); }
+  },80);
 }
 function calc(){
   if(!$('f_per')) return;
@@ -1099,33 +1120,32 @@ var activeTextField=null;
 var TK_ROWS=[
   ['1','2','3','4','5','6','7','8','9','0'],
   ['Q','W','E','R','T','Y','U','I','O','P'],
-  ['A','S','D','F','G','H','J','K','L'],
-  ['Z','X','C','V','B','N','M']
+  ['A','S','D','F','G','H','J','K','L']
 ];
+var TK_ROW4=['Z','X','C','V','B','N','M'];
 function tkBuild(){
   const g=$('tkGrid'); if(!g||g.dataset.built) return; g.dataset.built='1';
-  let html=TK_ROWS.map(function(row){
-    return '<div class="tk-row">'+row.map(function(k){
-      return '<button type="button" onpointerdown="tkTap(event,\''+k+'\')">'+k+'</button>';
-    }).join('')+'</div>';
-  }).join('');
-  html+='<div class="tk-row">'
-    + '<button type="button" onpointerdown="tkTap(event,\'-\')">-</button>'
-    + '<button type="button" onpointerdown="tkTap(event,\'/\')">/</button>'
-    + '<button type="button" onpointerdown="tkTap(event,\'.\')">.</button>'
-    + '<button type="button" class="tk-wide" onpointerdown="tkTap(event,\' \')">space</button>'
+  const key=k=>'<button type="button" onpointerdown="tkTap(event,\''+k+'\')">'+(k===' '?'space':k)+'</button>';
+  let html=TK_ROWS.map(function(row){ return '<div class="tk-row">'+row.map(key).join('')+'</div>'; }).join('');
+  // row 4: Z–M then backspace on the right (native position)
+  html+='<div class="tk-row">'+TK_ROW4.map(key).join('')
     + '<button type="button" class="tk-back" onpointerdown="tkBackStart(event)" onpointerup="tkBackStop()" onpointerleave="tkBackStop()" onpointercancel="tkBackStop()" aria-label="Delete (hold to clear)">⌫</button>'
+    + '</div>';
+  // bottom: symbols, wide space, Done
+  html+='<div class="tk-row tk-util">'
+    + key('-') + key('/') + key('.')
+    + '<button type="button" class="tk-wide" onpointerdown="tkTap(event,\' \')">space</button>'
     + '<button type="button" class="tk-go" onpointerdown="tkDone(event)" aria-label="Done">Done</button>'
     + '</div>';
   g.innerHTML=html;
 }
-function tkIsField(id){ return id==='modalInput'||id==='f_weight'||id==='f_type'; }
+function tkIsField(id){ return id==='modalInput'||id==='f_desc'||id==='f_weight'||id==='f_type'; }
 function tkShow(){ tkBuild(); kpHide(); $('textKeypad').classList.add('show'); $('textKeypad').setAttribute('aria-hidden','false'); document.body.classList.add('tk-open'); }
 function tkHide(){ tkBackStop(); $('textKeypad').classList.remove('show'); $('textKeypad').setAttribute('aria-hidden','true'); document.body.classList.remove('tk-open'); }
 function tkBind(id){
   if(!tkIsField(id)) return;
   activeTextField=id;
-  const l=$('tkField'); if(l){ l.textContent=({modalInput:'value',f_weight:'Weight',f_type:'Type'})[id]||'value'; }
+  const l=$('tkField'); if(l){ l.textContent=({modalInput:'value',f_desc:'Description',f_weight:'Weight',f_type:'Type'})[id]||'value'; }
   tkShow();
   const el=$(id); if(el){ setTimeout(()=>el.scrollIntoView({block:'center',behavior:'smooth'}),40); }
 }
@@ -1155,7 +1175,15 @@ function tkBackStop(){ clearTimeout(tkRepeatTO); clearInterval(tkRepeatIV); tkRe
 function tkDone(e){
   if(e){ e.preventDefault(); }
   if(activeTextField==='modalInput'){ const ok=$('modalOk'); if(ok) ok.click(); return; }
-  const el=$(activeTextField); tkHide(); if(el) el.blur();
+  tkAdvance();
+}
+// Done on a card text field moves to the next present text field, then hands off to the number
+// pad starting at Per Pallet (so manual entries flow Desc -> Weight -> Type -> Per -> ... -> save).
+function tkAdvance(){
+  const order=['f_desc','f_weight','f_type'];
+  const idx=order.indexOf(activeTextField);
+  for(let i=idx+1;i<order.length;i++){ const el=$(order[i]); if(el){ el.focus(); if(el.select) el.select(); setTimeout(()=>el.scrollIntoView({block:'center',behavior:'smooth'}),40); return; } }
+  nextField('f_per');   // switches to the numeric keypad
 }
 
 /* Enter moves through the boxes: Full -> Extra -> Location -> save */

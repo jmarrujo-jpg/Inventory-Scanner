@@ -513,7 +513,7 @@ var API_SECRET = '';
 
 /* Bump this on every page change — the number shows in the bottom-right corner so you can
    confirm a reload actually picked up the latest page (an old cached page has no tag). */
-var APP_VERSION = 'v43';
+var APP_VERSION = 'v44';
 
 /* Call a backend function: callApi('fn', [arg1, arg2]) -> Promise(result). */
 function callApi(fn, args){
@@ -1049,7 +1049,7 @@ function selectItem(it, edit){
     </div>
     <div class="actions">
       <button class="btn ghost" onclick="clearCard()">Cancel</button>
-      <button class="btn primary" onclick="saveEntry()">${ed?'✓ Update':'✓ Save entry'}</button>
+      <button class="btn primary" id="f_save" onclick="saveEntry()">${ed?'✓ Update':'✓ Save entry'}</button>
     </div>
    </div>`;
   calc();
@@ -1272,14 +1272,17 @@ function confirmLoc(bodyHtml){
 }
 
 /* ---- save ---- */
+var _saving=false;   // in-flight guard so a double-tap can't save the same count twice
 async function saveEntry(){
+  if(_saving) return;                 // already saving — ignore the second tap
+  _saving=true;
   const per=asNum($('f_per').value), full=asNum($('f_full').value), extra=asNum($('f_extra').value);
   const total=Math.round(full*per+extra);
-  if(total<=0){ toast('Enter a count greater than 0','err'); return; }
+  if(total<=0){ toast('Enter a count greater than 0','err'); _saving=false; return; }
   const warn = locWarning(composeLoc());
   if(warn){
     const ok = await confirmLoc(warn);
-    if(!ok){ const f=$('f_loc'); if(f){ f.focus(); if(f.select) f.select(); kpBind('f_loc'); } return; }  // "Fix" -> back to the box
+    if(!ok){ _saving=false; const f=$('f_loc'); if(f){ f.focus(); if(f.select) f.select(); kpBind('f_loc'); } return; }  // "Fix" -> back to the box
   }
   const now=new Date();
   const ts=now.getFullYear()+'-'+String(now.getMonth()+1).padStart(2,'0')+'-'+String(now.getDate()).padStart(2,'0')
@@ -1299,12 +1302,14 @@ async function saveEntry(){
     loc: composeLoc()
   };
   if(editing && ref){ entry.__tab=ref.__tab; entry.__row=ref.__row; }
-  const btn = document.querySelector('.btn.primary');
+  const btn = $('f_save');
+  const btnLabel = btn ? btn.textContent : '';
   if(btn){ btn.disabled=true; btn.textContent='Saving…'; }
   const fn = editing ? 'updateEntry' : 'appendEntry';
   const apiArgs = editing ? [entry] : [entry, state.dept];
   callApi(fn, apiArgs)
     .then(function(){
+      _saving=false;
       if(editing){
         clearCardOnly(); refreshEntries(); focusScan();
         toast('Updated '+total.toLocaleString()+' units');
@@ -1322,7 +1327,8 @@ async function saveEntry(){
       refreshEntries();
     })
     .catch(function(err){
-      if(btn){ btn.disabled=false; btn.textContent='\u2713 Save entry'; }
+      _saving=false;
+      if(btn){ btn.disabled=false; btn.textContent=btnLabel||'\u2713 Save entry'; }
       toast('Save failed — try again','err');
       console.error(err);
     });

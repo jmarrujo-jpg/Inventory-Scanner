@@ -146,7 +146,7 @@ input,select{font-family:inherit;font-size:16px}
 /* docked number pad — slides up from the bottom like a native keyboard, only while a count box
    (Full/Extra/Location) is active. iOS won't summon its own keyboard on the programmatic focus
    after a scan, so those boxes use inputmode=none and this pad instead. */
-.keypad{position:fixed;left:0;right:0;bottom:0;z-index:75;background:#e9ebee;border-top:1px solid #c7ccd1;
+.keypad{position:fixed;left:0;right:0;bottom:0;z-index:75;background:#e9ebee;border-top:1px solid #c7ccd1;touch-action:none;-webkit-user-select:none;user-select:none;
   padding:7px 8px calc(8px + env(safe-area-inset-bottom,0px));box-shadow:0 -8px 24px rgba(20,26,31,.16);
   transform:translateY(115%);transition:transform .2s ease;will-change:transform}
 .keypad.show{transform:translateY(0)}
@@ -513,7 +513,7 @@ var API_SECRET = '';
 
 /* Bump this on every page change — the number shows in the bottom-right corner so you can
    confirm a reload actually picked up the latest page (an old cached page has no tag). */
-var APP_VERSION = 'v44';
+var APP_VERSION = 'v45';
 
 /* Call a backend function: callApi('fn', [arg1, arg2]) -> Promise(result). */
 function callApi(fn, args){
@@ -1420,6 +1420,17 @@ function toast(msg,type){
   const t=$('toast'); t.textContent=msg; t.className='show'+(type==='err'?' err':'');
   clearTimeout(toastT); toastT=setTimeout(()=>t.className='',1800);
 }
+
+/* Keep taps in the GAPS between keys from blurring the field (which hides the pad) or scrolling.
+   The buttons preventDefault themselves; the pad background did not, so a near-miss tap landed on
+   the container, blurred the input, and closed the keyboard. Swallow those stray taps here. */
+['cardKeypad','textKeypad'].forEach(function(id){
+  var pad=document.getElementById(id);
+  if(pad){ pad.addEventListener('pointerdown', function(ev){
+    if(ev.target.closest('button')) return;   // real key press — let its own handler run
+    ev.preventDefault();                        // gap/edge tap — don't move focus or scroll
+  }, {passive:false}); }
+});
 
 /* show the build/version tag */
 $('buildTag').textContent = APP_VERSION;

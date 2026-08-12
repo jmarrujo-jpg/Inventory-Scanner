@@ -513,7 +513,7 @@ var API_SECRET = '';
 
 /* Bump this on every page change — the number shows in the bottom-right corner so you can
    confirm a reload actually picked up the latest page (an old cached page has no tag). */
-var APP_VERSION = 'v45';
+var APP_VERSION = 'v46';
 
 /* Call a backend function: callApi('fn', [arg1, arg2]) -> Promise(result). */
 function callApi(fn, args){
@@ -1243,7 +1243,22 @@ function locWarning(loc){
   const num = Number(p.num);
   if(!isFinite(num)) return null;
   if(num>=900 && num<=999) return null;    // 900s are staging locations — legitimately "far", never warn
-  const list = activeEntries();            // newest-first
+  // History to compare against, newest-first, minus the entry we're currently editing (so re-saving
+  // an edit of this very spot doesn't look like a revisit).
+  const editing = state.editIndex!=null;
+  const list = activeEntries().filter(function(e,i){ return !(editing && i===state.editIndex); });
+  const sameSpot = e => { const q=parseLoc(e.loc); return q.bldg===p.bldg && Number(q.num)===num; };
+
+  // --- Revisit check: this exact spot was already counted earlier, but the immediately-previous
+  //     entry is somewhere else. Counting the same spot back-to-back (stacking items) is fine;
+  //     leaving and coming back later is what we flag.
+  const countedBefore = list.some(sameSpot);
+  const backToBack = list.length>0 && sameSpot(list[0]);   // last thing counted was this same spot
+  if(countedBefore && !backToBack){
+    return '<b>'+esc(loc)+'</b> was already counted earlier this session.<br>You moved away and came back — adding more stock here, or is this a repeat?';
+  }
+
+  // --- Far-away check: number looks unreasonably distant from where you've been counting. ---
   const refs = [];
   for(let i=0;i<list.length && refs.length<5;i++){
     const q = parseLoc(list[i].loc);
@@ -1254,8 +1269,6 @@ function locWarning(loc){
   if(nearest<=LOC_JUMP) return null;       // close to where you've been — fine
   const pad = n => (p.bldg?p.bldg+'-':'')+String(n).padStart(3,'0');
   const last = pad(refs[0]);   // refs[0] is the most recent same-building count (newest-first)
-  const dupe = list.some(e=>{ const q=parseLoc(e.loc); return q.bldg===p.bldg && Number(q.num)===num; });
-  if(dupe) return '<b>'+esc(loc)+'</b> was already counted this session and it’s far from your last spot.<br>You last counted at <b>'+last+'</b>.<br>Adding more stock here, or is the number a typo (e.g. <b>8</b> vs <b>88</b>)?';
   return '<b>'+esc(loc)+'</b> is further than expected.<br>You last counted at <b>'+last+'</b>.<br>Double-check the number (e.g. <b>8</b> vs <b>88</b>).';
 }
 function confirmLoc(bodyHtml){

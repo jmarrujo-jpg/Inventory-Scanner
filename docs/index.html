@@ -364,7 +364,7 @@ html.modal-lock body{position:fixed;left:0;right:0;width:100%;overflow:hidden}
         </div>
         <div class="search-wrap hide" id="searchWrap" style="margin-top:10px">
           <div class="search-field">
-            <input id="searchInput" placeholder="type any part of the description or code" autocomplete="off">
+            <input id="searchInput" placeholder="type any part of the description or code" autocomplete="off" inputmode="none" onfocus="tkBind('searchInput')" onblur="tkOnBlur()">
             <button type="button" class="search-x" id="searchX" onclick="clearSearch()" aria-label="Clear search">×</button>
           </div>
           <div class="results hide" id="results"></div>
@@ -513,7 +513,7 @@ var API_SECRET = '';
 
 /* Bump this on every page change — the number shows in the bottom-right corner so you can
    confirm a reload actually picked up the latest page (an old cached page has no tag). */
-var APP_VERSION = 'v46';
+var APP_VERSION = 'v47';
 
 /* Call a backend function: callApi('fn', [arg1, arg2]) -> Promise(result). */
 function callApi(fn, args){
@@ -1175,13 +1175,13 @@ function tkBuild(){
     + '</div>';
   g.innerHTML=html;
 }
-function tkIsField(id){ return id==='modalInput'||id==='f_desc'||id==='f_weight'||id==='f_type'; }
+function tkIsField(id){ return id==='modalInput'||id==='f_desc'||id==='f_weight'||id==='f_type'||id==='searchInput'; }
 function tkShow(){ tkBuild(); kpHide(); $('textKeypad').classList.add('show'); $('textKeypad').setAttribute('aria-hidden','false'); document.body.classList.add('tk-open'); }
 function tkHide(){ tkBackStop(); $('textKeypad').classList.remove('show'); $('textKeypad').setAttribute('aria-hidden','true'); document.body.classList.remove('tk-open'); }
 function tkBind(id){
   if(!tkIsField(id)) return;
   activeTextField=id;
-  const l=$('tkField'); if(l){ l.textContent=({modalInput:'value',f_desc:'Description',f_weight:'Weight',f_type:'Type'})[id]||'value'; }
+  const l=$('tkField'); if(l){ l.textContent=({modalInput:'value',f_desc:'Description',f_weight:'Weight',f_type:'Type',searchInput:'Search'})[id]||'value'; }
   tkShow();
   const el=$(id); if(el){ setTimeout(()=>scrollFieldUp(el),40); }
 }
@@ -1211,6 +1211,7 @@ function tkBackStop(){ clearTimeout(tkRepeatTO); clearInterval(tkRepeatIV); tkRe
 function tkDone(e){
   if(e){ e.preventDefault(); }
   if(activeTextField==='modalInput'){ const ok=$('modalOk'); if(ok) ok.click(); return; }
+  if(activeTextField==='searchInput'){ const el=$('searchInput'); if(el) el.blur(); tkHide(); return; }
   tkAdvance();
 }
 // Done on a card text field moves to the next present text field, then hands off to the number

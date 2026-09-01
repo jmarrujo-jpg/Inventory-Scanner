@@ -142,7 +142,7 @@ input,select{font-family:inherit;font-size:16px}
 .stepbtn{flex:0 0 58px;border-radius:10px;background:var(--dept);color:#fff;font-weight:800;font-size:20px;display:grid;place-items:center;cursor:pointer}
 .stepbtn:active{filter:brightness(.92)}
 .stepbtn.ok{background:var(--ok)}
-.fld input[readonly]{background:var(--dept-soft);border-color:transparent;color:var(--dept);font-weight:700}
+.fld input.rodisp[readonly]{background:var(--dept-soft);border-color:transparent;color:var(--dept);font-weight:700}
 /* docked number pad — slides up from the bottom like a native keyboard, only while a count box
    (Full/Extra/Location) is active. iOS won't summon its own keyboard on the programmatic focus
    after a scan, so those boxes use inputmode=none and this pad instead. */
@@ -186,6 +186,16 @@ body.kp-open #count{padding-bottom:290px}
 body.tk-open #count{padding-bottom:340px}
 body.tk-open .modal:not(.hide){justify-content:flex-start}
 body.tk-open .modal-card{margin-top:12px;margin-bottom:12px}
+/* landscape / short screens: shrink the docked pads so they don't swallow the whole viewport */
+@media (orientation:landscape) and (max-height:560px){
+  .kp-grid button{height:40px;font-size:19px}
+  .kp-target{margin-bottom:4px}
+  .tk-grid button{height:34px;font-size:15px}
+  .tk-row{margin-bottom:4px}
+  .keypad{padding-top:5px}
+  body.kp-open #count{padding-bottom:210px}
+  body.tk-open #count{padding-bottom:250px}
+}
 
 .total-strip{grid-column:1/-1;background:var(--dept);color:#fff;border-radius:11px;padding:12px 16px;
   display:flex;justify-content:space-between;align-items:center;margin:2px 0 12px}
@@ -364,7 +374,7 @@ html.modal-lock body{position:fixed;left:0;right:0;width:100%;overflow:hidden}
         </div>
         <div class="search-wrap hide" id="searchWrap" style="margin-top:10px">
           <div class="search-field">
-            <input id="searchInput" placeholder="type any part of the description or code" autocomplete="off" inputmode="none" onfocus="tkBind('searchInput')" onblur="tkOnBlur()">
+            <input id="searchInput" placeholder="type any part of the description or code" autocomplete="off" inputmode="none" readonly onfocus="tkBind('searchInput')" onblur="tkOnBlur()">
             <button type="button" class="search-x" id="searchX" onclick="clearSearch()" aria-label="Clear search">×</button>
           </div>
           <div class="results hide" id="results"></div>
@@ -392,7 +402,7 @@ html.modal-lock body{position:fixed;left:0;right:0;width:100%;overflow:hidden}
   <div class="modal-card">
     <div class="modal-title" id="modalTitle"></div>
     <div class="modal-hint" id="modalHint"></div>
-    <input id="modalInput" inputmode="none" autocomplete="off" autocapitalize="characters" spellcheck="false" placeholder="enter value" onfocus="tkBind('modalInput')" onblur="tkOnBlur()">
+    <input id="modalInput" inputmode="none" readonly autocomplete="off" autocapitalize="characters" spellcheck="false" placeholder="enter value" onfocus="tkBind('modalInput')" onblur="tkOnBlur()">
     <div class="modal-actions">
       <button class="btn ghost" id="modalCancel">Cancel</button>
       <button class="btn primary" id="modalOk">Add</button>
@@ -513,7 +523,7 @@ var API_SECRET = '';
 
 /* Bump this on every page change — the number shows in the bottom-right corner so you can
    confirm a reload actually picked up the latest page (an old cached page has no tag). */
-var APP_VERSION = 'v47';
+var APP_VERSION = 'v48';
 
 /* Call a backend function: callApi('fn', [arg1, arg2]) -> Promise(result). */
 function callApi(fn, args){
@@ -762,8 +772,11 @@ $('scanInput').addEventListener('input', ()=>{
 function doScan(){
   const raw=$('scanInput').value.trim();
   if(!raw) return;
-  const it=activeIdx()[norm(raw)];
+  const key=norm(raw);
+  const it=activeIdx()[key];
   if(it){ chooseItem(it); clearScan(false); return; }   // a real product code always wins
+  const other=otherListFor(key);                        // scanned under the wrong tab?
+  if(other){ showWrongList(raw, other); clearScan(false); return; }
   if(looksLikeDate(raw)){ clearScan(); toast('📅 Date barcode ignored — scan the product code'); return; }
   if(isQuantity(raw)){ clearScan(); toast('🔢 Quantity ignored — scan the product code'); return; }
   showNotFound(raw);
@@ -812,7 +825,13 @@ function runSearch(){
   $('searchX').classList.toggle('show', $('searchInput').value.length>0);
   if(q.length<1){ box.classList.add('hide'); return; }
   const hits=activeList().filter(it=> norm(it.desc).includes(q) || norm(it.code).includes(q)).slice(0,40);
-  if(!hits.length){ box.innerHTML='<div class="empty">No matches</div>'; box.classList.remove('hide'); return; }
+  if(!hits.length){
+    const alt=searchOtherLists(q);
+    if(alt){ _searchRedirect={key:alt.key};
+      box.innerHTML='<div class="empty">No matches in '+curListLabel()+'.<br><span class="linkbtn" onclick="doSearchRedirect()">Look in '+LIST_LABEL[alt.key]+' →</span></div>'; }
+    else { _searchRedirect=null; box.innerHTML='<div class="empty">No matches</div>'; }
+    box.classList.remove('hide'); return;
+  }
   box.innerHTML=hits.map((it,i)=>{
     return `<div class="row" onclick="pickResult(${DATA[listKey()].indexOf(it)})">
       <span class="code ${it.code?'':'nocode'}">${it.code?esc(it.code):'no barcode'}</span>
@@ -822,6 +841,58 @@ function runSearch(){
 }
 function listKey(){ return state.dept==='plastics'?'plastics':(state.metalKind==='ends'?'ends':'cans'); }
 function pickResult(i){ const it=DATA[listKey()][i]; closeSearch(); chooseItem(it); }
+
+/* ---- cross-tab redirect: a code scanned under the wrong Ends/Cans/Plastics tab ---- */
+const LIST_LABEL={ends:'Ends',cans:'Cans',plastics:'Plastics'};
+function curListLabel(){ return state.dept==='plastics'?'Plastics':(state.metalKind==='ends'?'Ends':'Cans'); }
+// Find a code in the lists OTHER than the one that's active right now.
+function otherListFor(codeNorm){
+  const order=['ends','cans','plastics'], cur=listKey();
+  for(let i=0;i<order.length;i++){
+    const k=order[i]; if(k===cur) continue;
+    const it=IDX[k]&&IDX[k][codeNorm];
+    if(it) return {key:k, it:it};
+  }
+  return null;
+}
+var _redirect=null;   // pending {code, key, norm} from a wrong-tab scan
+function showWrongList(code, other){
+  _redirect={code:code, key:other.key, norm:norm(code)};
+  const label=LIST_LABEL[other.key];
+  $('notFound').classList.remove('hide');
+  $('notFound').innerHTML='<span>↔</span><div><b>“'+esc(code)+'” is a '+label+' item</b>, not '+curListLabel()+'.<br>'
+    +'<button type="button" class="btn primary nf-add" onclick="doRedirect()">Switch to '+label+' &amp; count it</button>'
+    +'<span class="linkbtn" onclick="redirectAddHere()">Add here instead</span></div>';
+  clearCardOnly();
+}
+function doRedirect(){ if(!_redirect) return; const r=_redirect; _redirect=null; switchAndCount(r.key, r.norm); }
+function redirectAddHere(){ const r=_redirect; _redirect=null; if(r) showNotFound(r.code); }
+// Flip to the tab/department that actually has this code, then open its card — no delete/rescan.
+function switchAndCount(key, codeNorm){
+  $('notFound').classList.add('hide');
+  if(key==='plastics'){ if(state.dept!=='plastics') openDept('plastics'); }
+  else { if(state.dept!=='metals') openDept('metals'); setMetalKind(key); }
+  const open=function(){ const it=activeIdx()[codeNorm]; if(it) chooseItem(it); else toast('Switched to '+LIST_LABEL[key]); };
+  setTimeout(open, 60);   // let the tab switch settle, then open the card
+}
+// Search fell through on the current tab — offer the tab that does have a match.
+var _searchRedirect=null;
+function searchOtherLists(q){
+  const order=['ends','cans','plastics'], cur=listKey();
+  for(let i=0;i<order.length;i++){
+    const k=order[i]; if(k===cur) continue;
+    const hit=(DATA[k]||[]).some(it=> norm(it.desc).includes(q) || norm(it.code).includes(q));
+    if(hit) return {key:k};
+  }
+  return null;
+}
+function doSearchRedirect(){ if(!_searchRedirect) return; switchSearchTo(_searchRedirect.key); }
+function switchSearchTo(key){
+  const raw=$('searchInput').value;
+  if(key==='plastics'){ if(state.dept!=='plastics') openDept('plastics'); }
+  else { if(state.dept!=='metals') openDept('metals'); setMetalKind(key); }
+  openSearch(); const inp=$('searchInput'); if(inp){ inp.value=raw; runSearch(); }
+}
 
 /* ---- pop-up calculator ---- */
 // Remembers which count box was last active, so "Use this number" drops the
@@ -1005,13 +1076,13 @@ function selectItem(it, edit){
   if(dept==='metals' && kind==='ends'){
     extraFields=`
       <div class="fld"><label>Weight</label>
-        <input id="f_weight" class="mono" inputmode="none" value="${esc(inputVal(it.weight))}" placeholder="${inputPh(it.weight)||'enter weight'}" onfocus="tkBind('f_weight')" onblur="tkOnBlur()"></div>
+        <input id="f_weight" class="mono" inputmode="none" readonly value="${esc(inputVal(it.weight))}" placeholder="${inputPh(it.weight)||'enter weight'}" onfocus="tkBind('f_weight')" onblur="tkOnBlur()"></div>
       <div class="fld"><label>Type</label>
-        <input id="f_type" class="mono" inputmode="none" value="${esc(inputVal(it.type))}" placeholder="${inputPh(it.type)||'enter type'}" onfocus="tkBind('f_type')" onblur="tkOnBlur()"></div>`;
+        <input id="f_type" class="mono" inputmode="none" readonly value="${esc(inputVal(it.type))}" placeholder="${inputPh(it.type)||'enter type'}" onfocus="tkBind('f_type')" onblur="tkOnBlur()"></div>`;
   } else if(dept==='plastics'){
     extraFields=`
       <div class="fld full"><label>Type</label>
-        <input id="f_type" inputmode="none" value="${esc(inputVal(it.type))}" placeholder="enter type" onfocus="tkBind('f_type')" onblur="tkOnBlur()"></div>`;
+        <input id="f_type" inputmode="none" readonly value="${esc(inputVal(it.type))}" placeholder="enter type" onfocus="tkBind('f_type')" onblur="tkOnBlur()"></div>`;
   }
 
   $('cardMount').innerHTML=`
@@ -1024,23 +1095,23 @@ function selectItem(it, edit){
     <div class="card-body">
       <div class="grid">
         <div class="fld full"><label>${codeLabel}</label><input id="f_code" class="mono" value="${esc(it.code||'')}"></div>
-        <div class="fld full"><label>Description</label><input id="f_desc" inputmode="none" value="${esc(it.desc)}" onfocus="tkBind('f_desc')" onblur="tkOnBlur()"></div>
+        <div class="fld full"><label>Description</label><input id="f_desc" inputmode="none" readonly value="${esc(it.desc)}" onfocus="tkBind('f_desc')" onblur="tkOnBlur()"></div>
         ${extraFields}
-        <div class="fld full"><label>${perLabel}</label><input id="f_per" class="mono" inputmode="none" value="${it.perUnit??''}" oninput="calc()" onfocus="this.select();kpBind('f_per')" onblur="kpOnBlur()"></div>
+        <div class="fld full"><label>${perLabel}</label><input id="f_per" class="mono" inputmode="none" readonly value="${it.perUnit??''}" oninput="calc()" onfocus="this.select();kpBind('f_per')" onblur="kpOnBlur()"></div>
 
         <div class="fld"><label>Full ${dept==='plastics'?'(pallets/boxes)':'(boxes)'}</label>
           <div class="biginput">
-            <input id="f_full" class="big" inputmode="none" enterkeyhint="next" value="${vFull}" oninput="calc()" onfocus="this.select();lastCountField='f_full';kpBind('f_full')" onblur="kpOnBlur()" onkeydown="cardEnter(event,'f_extra')">
+            <input id="f_full" class="big" inputmode="none" readonly enterkeyhint="next" value="${vFull}" oninput="calc()" onfocus="this.select();lastCountField='f_full';kpBind('f_full')" onblur="kpOnBlur()" onkeydown="cardEnter(event,'f_extra')">
           </div></div>
         <div class="fld"><label>Extra (loose)</label>
           <div class="biginput">
-            <input id="f_extra" class="big" inputmode="none" enterkeyhint="next" value="${vExtra}" oninput="calc()" onfocus="this.select();lastCountField='f_extra';kpBind('f_extra')" onblur="kpOnBlur()" onkeydown="cardEnter(event,'f_loc')">
+            <input id="f_extra" class="big" inputmode="none" readonly enterkeyhint="next" value="${vExtra}" oninput="calc()" onfocus="this.select();lastCountField='f_extra';kpBind('f_extra')" onblur="kpOnBlur()" onkeydown="cardEnter(event,'f_loc')">
           </div></div>
 
         <div class="fld full"><label>Location — building + number</label>
           <div class="locrow">
             <select id="f_bldg" onchange="onCardBldg(this.value)">${bldgOpts}</select>
-            <input id="f_loc" class="mono" inputmode="none" enterkeyhint="done" placeholder="number" value="${vNum}" onfocus="kpBind('f_loc')" onblur="kpOnBlur()" onkeydown="cardEnter(event,'save')">
+            <input id="f_loc" class="mono" inputmode="none" readonly enterkeyhint="done" placeholder="number" value="${vNum}" onfocus="kpBind('f_loc')" onblur="kpOnBlur()" onkeydown="cardEnter(event,'save')">
           </div></div>
 
         <div class="total-strip"><span class="lbl">Total count</span>
@@ -1445,6 +1516,24 @@ function toast(msg,type){
     ev.preventDefault();                        // gap/edge tap — don't move focus or scroll
   }, {passive:false}); }
 });
+
+/* Rotating the phone can leave the docked keypad mis-sized (stuck tall). When orientation/size
+   changes while a pad is open, rebuild its layout for the new width and re-seat the active field. */
+(function(){
+  var reflowTO=null;
+  function reflowPad(){
+    var tk=$('textKeypad'), kp=$('cardKeypad');
+    var tkOpen=tk&&tk.classList.contains('show'), kpOpen=kp&&kp.classList.contains('show');
+    if(!tkOpen && !kpOpen) return;
+    var g=$('tkGrid'); if(g){ g.dataset.built=''; if(tkOpen) tkBuild(); }   // re-lay-out for new width
+    var id = tkOpen ? activeTextField : activeNumField;
+    var el = id && $(id);
+    if(el){ setTimeout(function(){ scrollFieldUp(el, id==='f_loc'?'.total-strip':null); }, 80); }
+  }
+  function schedule(){ clearTimeout(reflowTO); reflowTO=setTimeout(reflowPad, 250); }
+  window.addEventListener('orientationchange', schedule);
+  window.addEventListener('resize', schedule);
+})();
 
 /* show the build/version tag */
 $('buildTag').textContent = APP_VERSION;

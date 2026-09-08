@@ -208,18 +208,42 @@ body.tk-open .modal-card{margin-top:12px;margin-bottom:12px}
 .btn.primary{background:var(--dept);color:#fff}
 .btn.primary:active{filter:brightness(.92)}
 .btn.ghost{background:transparent;border:1.5px solid var(--line);color:var(--ink-soft);flex:0 0 96px}
-/* log toggle bar (top of count) + "last counted here" hint on the card */
-.logbar{display:flex;align-items:center;justify-content:space-between;gap:10px;margin:0 0 10px;padding:8px 12px;
-  background:#fff;border:1px solid var(--line);border-radius:10px}
-.logtgl{display:flex;align-items:center;gap:8px;font-size:13px;font-weight:700;color:var(--ink);cursor:pointer}
-.logtgl input{width:20px;height:20px;accent-color:var(--dept)}
-.logstat{font-size:11px;font-weight:700;letter-spacing:.04em;text-transform:uppercase;color:var(--ink-soft)}
-.logstat.ok{color:var(--dept)} .logstat.err{color:var(--metal-accent)}
+/* mode switch (Scan item / Count by row) at the top of the count screen */
+.modeseg{display:flex;gap:6px;margin:0 0 10px;padding:4px;background:#e9ebee;border-radius:12px}
+.modeseg button{flex:1;height:42px;border:0;border-radius:9px;background:transparent;color:var(--ink-soft);
+  font-weight:800;font-size:14px;display:flex;align-items:center;justify-content:center;gap:6px}
+.modeseg button.on{background:#fff;color:var(--dept);box-shadow:0 1px 3px rgba(20,26,31,.12)}
+/* "last counted here" hint on the card */
 .loghint{background:var(--dept-soft);border:1px solid transparent;border-radius:10px;padding:9px 12px;font-size:13px;line-height:1.35;color:var(--ink)}
 .loghint.warn{background:#FFF8E6;border-color:var(--metal-accent)}
 .loghint .lh-i{margin-right:4px}
+.loghint .lh-bd{color:var(--ink-soft);font-weight:600}
 .loghint .lh-note{font-size:11px;color:var(--ink-soft);font-weight:600}
 .loghint b.up{color:#1b7f3b} .loghint b.down{color:#c0392b}
+/* Count-by-row panel */
+.rowpanel{margin:2px 0 6px}
+.rowpick label{display:block;font-size:12px;font-weight:700;color:var(--ink-soft);margin:0 2px 5px}
+.rowpick .locrow{display:flex;gap:8px}
+.rowpick select{flex:0 0 128px;height:52px;border:1.5px solid var(--line);border-radius:10px;padding:0 8px;background:#fff}
+.rowpick input{flex:1;height:52px;border:1.5px solid var(--line);border-radius:10px;padding:0 12px;background:#fff}
+.rowpick .rowgo{flex:0 0 88px;height:52px}
+.rowinfo{margin:12px 2px 8px}
+.rowhdr{font-size:13px;color:var(--ink)}
+.rowhint{font-size:13px;color:var(--ink-soft);background:#fff;border:1px solid var(--line);border-radius:10px;padding:12px}
+.rowhint.warn{background:#FFF8E6;border-color:var(--metal-accent);color:var(--ink)}
+.rowlist{display:flex;flex-direction:column;gap:8px}
+.rowitem{display:flex;align-items:center;gap:10px;background:#fff;border:1px solid var(--line);border-radius:11px;padding:10px 12px}
+.rowitem.done{background:var(--dept-soft);border-color:transparent}
+.ri-main{flex:1;min-width:0}
+.ri-name{font-weight:800;font-size:15px;color:var(--ink);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.ri-sub{font-size:12px;color:var(--ink-soft);margin-top:2px}
+.ri-btns{display:flex;gap:6px;flex:0 0 auto}
+.ri-done{font-weight:800;color:var(--dept);font-family:'JetBrains Mono';font-size:14px;flex:0 0 auto}
+.btn.tiny{flex:0 0 auto;height:38px;min-width:52px;padding:0 12px;border-radius:9px;font-size:14px;font-weight:800;
+  border:1.5px solid var(--line);background:#fff;color:var(--ink)}
+.btn.tiny.ok{background:var(--ok);border-color:var(--ok);color:#fff}
+.btn.tiny.x{flex:0 0 40px;min-width:40px;color:var(--ink-soft)}
+.rowadd{margin-top:4px;width:100%}
 
 /* recent list */
 .recent{margin-top:2px}
@@ -362,21 +386,21 @@ html.modal-lock body{position:fixed;left:0;right:0;width:100%;overflow:hidden}
     </div>
 
     <div class="body">
-      <div class="logbar" id="logBar">
-        <label class="logtgl"><input type="checkbox" id="logToggle" onchange="toggleLog(this.checked)"> <span>Compare to last count (log)</span></label>
-        <span class="logstat" id="logStatus"></span>
+      <div class="modeseg" id="modeSeg">
+        <button type="button" id="modeScan" class="on" onclick="setMode('scan')">🔍 Scan item</button>
+        <button type="button" id="modeRow" onclick="setMode('row')">▦ Count by row</button>
       </div>
       <div class="seg hide" id="metalSeg">
         <button id="segEnds" class="on" onclick="setMetalKind('ends')">Ends</button>
         <button id="segCans" onclick="setMetalKind('cans')">Cans</button>
       </div>
 
-      <div class="bldgbar">
+      <div class="bldgbar" id="bldgBar">
         <span class="bldglbl">Building you're in</span>
         <select id="topBldg" onchange="setBuilding(this.value)"></select>
       </div>
 
-      <div class="scanbay">
+      <div class="scanbay" id="scanbay">
         <label id="scanLabel">Scan barcode</label>
         <div class="scan-input-wrap">
           <span class="readout">›</span>
@@ -395,6 +419,19 @@ html.modal-lock body{position:fixed;left:0;right:0;width:100%;overflow:hidden}
           </div>
           <div class="results hide" id="results"></div>
         </div>
+      </div>
+
+      <div id="rowPanel" class="rowpanel hide">
+        <div class="rowpick">
+          <label>Row / location you're counting</label>
+          <div class="locrow">
+            <select id="rowBldg" onchange="onRowBldg(this.value)"></select>
+            <input id="rowNum" class="mono" inputmode="none" readonly placeholder="number" onfocus="kpBind('rowNum')" onblur="kpOnBlur()">
+            <button type="button" class="btn primary rowgo" onclick="loadRow()">Show</button>
+          </div>
+        </div>
+        <div id="rowInfo" class="rowinfo"></div>
+        <div id="rowList" class="rowlist"></div>
       </div>
 
       <div id="notFound" class="notfound hide"></div>
@@ -539,7 +576,7 @@ var API_SECRET = '';
 
 /* Bump this on every page change — the number shows in the bottom-right corner so you can
    confirm a reload actually picked up the latest page (an old cached page has no tag). */
-var APP_VERSION = 'v50';
+var APP_VERSION = 'v51';
 
 /* Call a backend function: callApi('fn', [arg1, arg2]) -> Promise(result). */
 function callApi(fn, args){
@@ -560,7 +597,8 @@ var DATA = {ends:[],cans:[],plastics:[]};
 </script>
 <script>
 /* ====== APP LOGIC ====== */
-const state = { dept:null, metalKind:'ends', entries:{metals:[], plastics:[]}, current:null, building:'' };
+const state = { dept:null, metalKind:'ends', entries:{metals:[], plastics:[]}, current:null, building:'', mode:'scan' };
+var rowSkips = {};   // per-location products the user marked "not here" in Count-by-Row (transient)
 
 /* Buildings for the Location box: pick a building, type just the number.
    Saved as LETTER-### (zero-padded to 3), e.g. Monarch + 3 -> "M-003", + 103 -> "M-103". */
@@ -699,7 +737,8 @@ function openDept(dept){
   $('landing').style.display='none';
   $('count').style.display='flex';
   const tb=$('topBldg'); if(tb) tb.value=state.building||'';
-  clearCard(); renderRecent(); updateHints(); updateLogBar();
+  state.mode='scan';
+  clearCard(); renderRecent(); updateHints(); syncMode();
   refreshEntries();   // pull the authoritative list from the sheet
   focusScan();
 }
@@ -713,7 +752,8 @@ function setMetalKind(k){
   $('segEnds').classList.toggle('on',k==='ends');
   $('segCans').classList.toggle('on',k==='cans');
   $('scanLabel').textContent='Scan barcode';
-  clearCard(); closeSearch(); updateHints(); updateLogBar(); focusScan();
+  clearCard(); closeSearch(); updateHints(); syncMode();
+  if(state.mode==='scan') focusScan();
 }
 function updateHints(){
   const list=activeList();
@@ -912,12 +952,19 @@ function switchSearchTo(key){
 /* ---- read-only history log ("last counted here") ---- */
 // Loaded once from the SEPARATE log workbook via the worker's getLogs. Never written to.
 var LOG={metals:[],plastics:[]}, LOGIDX={metals:{},plastics:{}}, LOG_LOADED=false, LOG_ERR=false;
-var LOG_ON=(function(){ try{ return localStorage.getItem('logOn')!=='0'; }catch(_){ return true; } })();  // default on
+var LOG_ON=true;   // "compare to last count" is always on
 function loadLogs(){
   return callApi('getLogs',[]).then(function(res){
     LOG.metals=(res&&res.metals)||[]; LOG.plastics=(res&&res.plastics)||[];
-    buildLogIndex(); LOG_LOADED=true; LOG_ERR=false; updateLogBar(); updateLogHint();
-  }).catch(function(err){ LOG_ERR=true; LOG_LOADED=false; updateLogBar(); console.warn('log load failed',err); });
+    buildLogIndex(); LOG_LOADED=true; LOG_ERR=false; updateLogHint(); if(state.mode==='row') renderRowPanel();
+  }).catch(function(err){ LOG_ERR=true; LOG_LOADED=false; if(state.mode==='row') renderRowPanel(); console.warn('log load failed',err); });
+}
+// Split a total into full units/pallets + loose, using the item's per-pallet number.
+function unitsBreakdown(total, per){
+  total=Number(total)||0; per=Number(per)||0;
+  if(per>0){ const full=Math.floor(total/per); const loose=total-full*per;
+    return full+' full'+(loose>0?' + '+loose.toLocaleString()+' loose':''); }
+  return null;
 }
 // Location key that matches the app's own normalization (building + numeric value, leading zeros dropped).
 function logLocKey(loc){ const p=parseLoc(loc); return p.bldg+'#'+(p.num||''); }
@@ -952,17 +999,6 @@ function logForLoc(loc){
   if(state.dept==='metals'){ const kind=state.metalKind==='cans'?'Cans':'Ends'; return rows.filter(function(r){ return !r.kind || norm(r.kind)===norm(kind); }); }
   return rows;
 }
-function toggleLog(on){ LOG_ON=!!on; try{ localStorage.setItem('logOn', on?'1':'0'); }catch(_){}
-  updateLogBar(); updateLogHint(); }
-function updateLogBar(){
-  const t=$('logToggle'); if(t) t.checked=LOG_ON;
-  const s=$('logStatus'); if(!s) return;
-  if(!LOG_ON){ s.textContent='off'; s.className='logstat'; return; }
-  if(LOG_ERR){ s.textContent='log unavailable'; s.className='logstat err'; return; }
-  if(!LOG_LOADED){ s.textContent='loading…'; s.className='logstat'; return; }
-  const dep=state.dept==='plastics'?'plastics':'metals';
-  s.textContent=(LOG[dep]||[]).length+' logged'; s.className='logstat ok';
-}
 // The "last counted here" line on the card. Updates live as location / counts change.
 function updateLogHint(){
   const box=$('logHint'); if(!box) return;
@@ -979,7 +1015,8 @@ function updateLogHint(){
     const cur=Math.round(full*per+extra);
     let delta='';
     if(cur>0){ const d=cur-last; delta = d===0 ? ' · <b>same as last</b>' : (d>0?' · <b class="up">+'+d.toLocaleString()+'</b>':' · <b class="down">'+d.toLocaleString()+'</b>'); }
-    box.innerHTML='<span class="lh-i">📋</span> Last counted here: <b>'+last.toLocaleString()+'</b> units'+(r.countDate?' · '+esc(String(r.countDate)):'')+delta;
+    const bd=unitsBreakdown(last, per);
+    box.innerHTML='<span class="lh-i">📋</span> Last counted here: <b>'+last.toLocaleString()+'</b> units'+(bd?' <span class="lh-bd">('+bd+')</span>':'')+(r.countDate?' · '+esc(String(r.countDate)):'')+delta;
     box.className='fld full loghint match';
   } else {
     const list=here.slice(0,3).map(function(r){ return esc(r.product||r.desc)+' ('+(Number(r.qty)||0).toLocaleString()+')'; }).join(', ');
@@ -987,6 +1024,151 @@ function updateLogHint(){
     box.className='fld full loghint warn';
   }
   box.hidden=false;
+}
+
+/* ---- Count by row: pick a location, work through what the log had there last ---- */
+// Timestamp in the same shape saveEntry uses.
+function nowTs(){
+  const n=new Date();
+  return n.getFullYear()+'-'+String(n.getMonth()+1).padStart(2,'0')+'-'+String(n.getDate()).padStart(2,'0')
+    +' '+String(n.getHours()).padStart(2,'0')+':'+String(n.getMinutes()).padStart(2,'0')+':'+String(n.getSeconds()).padStart(2,'0');
+}
+// Find the lookup row (perUnit/weight/type) for a logged product, by code then description.
+function lookupForProduct(product, desc){
+  const idx=activeIdx(); let it=idx[norm(product)];
+  if(it) return it;
+  const list=activeList();
+  return list.find(function(x){ return norm(x.desc)===norm(desc) || norm(x.desc)===norm(product) || norm(x.code)===norm(product); }) || null;
+}
+// Location from the row picker (mirror of composeLoc for the row fields).
+function composeRowLoc(){
+  const sel=$('rowBldg')?$('rowBldg').value:'';
+  const raw=($('rowNum')&&$('rowNum').value||'').trim();
+  const m=/^([A-Za-z]{1,2})[\s-]?(\d+)$/.exec(raw);
+  let letter=sel, digits;
+  if(m){ letter=m[1].toUpperCase(); digits=m[2]; } else { digits=raw.replace(/\D/g,''); }
+  if(!digits) return letter||'';
+  return (letter?letter+'-':'')+digits.padStart(3,'0');
+}
+function fillRowBuildings(){
+  const sel=$('rowBldg'); if(!sel || sel.dataset.built) return; sel.dataset.built='1';
+  sel.innerHTML=['<option value="">—</option>'].concat(BUILDINGS.map(function(b){ return '<option value="'+b[0]+'">'+b[0]+' · '+b[1]+'</option>'; })).join('');
+  sel.value=state.building||'';
+}
+function onRowBldg(v){ state.building=v; persistSession(); const tb=$('topBldg'); if(tb) tb.value=v; }
+// Switch between Scan and Count-by-row.
+function setMode(mode){
+  state.mode=mode;
+  clearCardOnly(); $('notFound').classList.add('hide'); closeSearch();
+  syncMode();
+  if(mode==='scan'){ focusScan(); } else { kpHide(); }
+}
+// Reflect the current mode in the UI (buttons, which panel shows). Safe to call anytime.
+function syncMode(){
+  const m=state.mode||'scan';
+  const ms=$('modeScan'), mr=$('modeRow'); if(ms) ms.classList.toggle('on',m==='scan'); if(mr) mr.classList.toggle('on',m==='row');
+  const sb=$('scanbay'); if(sb) sb.style.display=m==='scan'?'':'none';
+  const bb=$('bldgBar'); if(bb) bb.style.display=m==='scan'?'':'none';
+  const rp=$('rowPanel'); if(rp) rp.classList.toggle('hide', m!=='row');
+  if(m==='row'){ fillRowBuildings(); renderRowPanel(); }
+}
+function loadRow(){ kpHide(); renderRowPanel(); }
+// Session entries already recorded at this location (so we can tick counted products).
+function countedAt(loc){ const key=logLocKey(loc); return activeEntries().filter(function(e){ return logLocKey(e.loc)===key; }); }
+function rowIsCounted(counted, r){ return counted.some(function(e){ return norm(e.code)===norm(r.product) || (r.desc && norm(e.desc)===norm(r.desc)); }); }
+function rowCountedEntry(counted, r){ return counted.find(function(e){ return norm(e.code)===norm(r.product) || (r.desc && norm(e.desc)===norm(r.desc)); }); }
+function rowSkipKey(loc,i){ return logLocKey(loc)+'|'+i; }
+function renderRowPanel(){
+  fillRowBuildings();
+  const info=$('rowInfo'), list=$('rowList'); if(!info||!list) return;
+  const loc=composeRowLoc();
+  if(!loc || parseLoc(loc).num===''){
+    info.innerHTML='<div class="rowhint">Pick a building and enter the row/location number, then tap <b>Show</b>.</div>'; list.innerHTML=''; return;
+  }
+  if(!LOG_LOADED){
+    info.innerHTML='<div class="rowhint warn">Last-count log isn’t loaded yet — nothing to pre-fill for <b>'+esc(loc)+'</b>.<br>You can still add items from the <b>Scan item</b> tab. (Check the log setup.)</div>';
+    list.innerHTML='<button type="button" class="btn ghost rowadd" onclick="rowAddProduct()">+ Add a product here</button>'; return;
+  }
+  const rows=logForLoc(loc);
+  const counted=countedAt(loc);
+  const doneN=rows.filter(function(r){ return rowIsCounted(counted,r); }).length;
+  info.innerHTML='<div class="rowhdr">Last count at <b>'+esc(loc)+'</b> · '+rows.length+' item'+(rows.length===1?'':'s')
+    +(rows.length?' · <b>'+doneN+'</b> counted':'')+'</div>';
+  let html='';
+  rows.forEach(function(r,i){
+    if(rowSkips[rowSkipKey(loc,i)]) return;   // marked "not here"
+    html+=rowItemHtml(r,i,loc,counted);
+  });
+  if(!rows.length){ html='<div class="rowhint">Nothing was logged at <b>'+esc(loc)+'</b>.</div>'; }
+  html+='<button type="button" class="btn ghost rowadd" onclick="rowAddProduct()">+ Add a product here</button>';
+  list.innerHTML=html;
+}
+function rowItemHtml(r,i,loc,counted){
+  const it=lookupForProduct(r.product,r.desc);
+  const per=it?Number(it.perUnit)||0:0;
+  const total=Number(r.qty)||0;
+  const bd=unitsBreakdown(total, per);
+  const done=rowIsCounted(counted,r);
+  const de=done?rowCountedEntry(counted,r):null;
+  const sub=(r.desc&&r.desc!==r.product?esc(r.desc)+' · ':'')+'last: <b>'+total.toLocaleString()+'</b> units'+(bd?' ('+bd+')':'');
+  return '<div class="rowitem'+(done?' done':'')+'">'
+    +'<div class="ri-main"><div class="ri-name">'+esc(r.product||r.desc)+'</div><div class="ri-sub">'+sub+'</div></div>'
+    +(done
+      ? '<div class="ri-done">✓ '+(Number(de&&de.total)||0).toLocaleString()+'</div>'
+      : '<div class="ri-btns">'
+          +'<button type="button" class="btn tiny ok" onclick="rowSame('+i+')">Same</button>'
+          +'<button type="button" class="btn tiny" onclick="rowEdit('+i+')">Edit</button>'
+          +'<button type="button" class="btn tiny x" onclick="rowSkip('+i+')" aria-label="Not here">✕</button>'
+        +'</div>')
+    +'</div>';
+}
+function rowEntryFor(r, loc, totalUnits){
+  const it=lookupForProduct(r.product,r.desc);
+  const per=it?Number(it.perUnit)||0:0;
+  let full=0, extra=Number(totalUnits)||0;
+  if(per>0){ full=Math.floor((Number(totalUnits)||0)/per); extra=(Number(totalUnits)||0)-full*per; }
+  return {
+    ts: nowTs(), counter: $('counterName').value.trim()||'—',
+    category: state.dept==='plastics'?'Plastics':(state.metalKind==='ends'?'Ends':'Cans'),
+    code: (it&&it.code)||r.product||'', desc: (it&&it.desc)||r.desc||r.product||'',
+    weight: (it&&it.weight)||'', type: (it&&it.type)||'',
+    per, full, extra, total: Math.round(full*per+extra), loc: loc
+  };
+}
+var _rowSaving=false;
+function appendCounted(entry){
+  return callApi('appendEntry',[entry, state.dept]).then(function(){
+    activeEntries().unshift(entry); persistSession(); renderRecent(); refreshEntries(); return true;
+  });
+}
+// One-tap: the last count is still accurate — record it as this count.
+function rowSame(i){
+  if(_rowSaving) return; _rowSaving=true;
+  const loc=composeRowLoc(); const r=logForLoc(loc)[i];
+  if(!r){ _rowSaving=false; return; }
+  const entry=rowEntryFor(r, loc, r.qty);
+  if(entry.total<=0){ _rowSaving=false; toast('Nothing to record (0)','err'); return; }
+  toast('Saving…');
+  appendCounted(entry).then(function(){ _rowSaving=false; toast('Counted '+entry.total.toLocaleString()+' · '+esc(entry.code)); renderRowPanel(); })
+    .catch(function(e){ _rowSaving=false; toast('Save failed — try again','err'); console.error(e); });
+}
+// Open the normal count card pre-filled with this product + location + last split, to adjust.
+function rowEdit(i){
+  const loc=composeRowLoc(); const r=logForLoc(loc)[i]; if(!r) return;
+  const it=lookupForProduct(r.product,r.desc);
+  const total=Number(r.qty)||0; const per=it?Number(it.perUnit)||0:0;
+  let full=0, extra=total; if(per>0){ full=Math.floor(total/per); extra=total-full*per; }
+  const item = it ? Object.assign({}, it) : { code:r.product, desc:r.desc||r.product, weight:'', type:'', perUnit:'', __manual:true };
+  item.__prefill = { loc: loc, full: full, extra: extra };
+  selectItem(item);
+}
+function rowSkip(i){ const loc=composeRowLoc(); rowSkips[rowSkipKey(loc,i)]=1; renderRowPanel(); }
+// Add something the log didn't list: jump to Scan with this building preset.
+function rowAddProduct(){
+  const loc=composeRowLoc(); const p=parseLoc(loc);
+  if(p.bldg){ state.building=p.bldg; const tb=$('topBldg'); if(tb) tb.value=p.bldg; }
+  setMode('scan');
+  toast(p.num?('Scan/search the product to add at '+esc(loc)):'Scan or search the product to add');
 }
 
 /* ---- pop-up calculator ---- */
@@ -1149,6 +1331,7 @@ function selectItem(it, edit){
   $('notFound').classList.add('hide');
   state.current=it;
   state.editIndex = edit ? edit.index : null;
+  if(state.mode==='row'){ const rp=$('rowPanel'); if(rp) rp.classList.add('hide'); }   // focus on the card while editing
   const ed = state.editIndex!=null ? (activeEntries()[state.editIndex]||null) : null;
   const dept=state.dept, kind=state.metalKind;
   const isPlastic=dept==='plastic'||dept==='plastics';
@@ -1158,14 +1341,16 @@ function selectItem(it, edit){
   const inputVal = v => isCheckValue(v) ? '' : (v||'');
   const inputPh  = v => isCheckValue(v) ? 'enter value' : '';
 
-  const locParts = ed ? parseLoc(ed.loc) : { bldg: state.building, num:'' };
+  // Count-by-row can pre-fill a new card with the last count's location + full/extra split.
+  const pre = (!ed && it.__prefill) ? it.__prefill : null;
+  const locParts = ed ? parseLoc(ed.loc) : (pre&&pre.loc ? parseLoc(pre.loc) : { bldg: state.building, num:'' });
   const vBldg = locParts.bldg;   // editing shows the entry's building; a new scan uses the current one
   const vNum  = esc(locParts.num || '');
   const bldgOpts = ['<option value="">—</option>'].concat(
     BUILDINGS.map(b=>'<option value="'+b[0]+'"'+(b[0]===vBldg?' selected':'')+'>'+b[0]+' · '+b[1]+'</option>')
   ).join('');
-  const vFull = ed ? (Number(ed.full)||0) : 0;
-  const vExtra= ed ? (Number(ed.extra)||0) : 0;
+  const vFull = ed ? (Number(ed.full)||0) : (pre?(Number(pre.full)||0):0);
+  const vExtra= ed ? (Number(ed.extra)||0) : (pre?(Number(pre.extra)||0):0);
 
   let extraFields='';
   if(dept==='metals' && kind==='ends'){
@@ -1264,13 +1449,13 @@ function scrollFieldUp(el, anchorSel){
 // (Per/Full/Extra/Location) use inputmode=none and this docked keypad instead. Buttons fire on a
 // single pointerdown (no mouse+touch double-firing) and edit whichever box is active.
 var activeNumField='f_full';
-function kpIsField(id){ return id==='f_per'||id==='f_full'||id==='f_extra'||id==='f_loc'; }
+function kpIsField(id){ return id==='f_per'||id==='f_full'||id==='f_extra'||id==='f_loc'||id==='rowNum'; }
 function kpShow(){ tkHide(); $('cardKeypad').classList.add('show'); $('cardKeypad').setAttribute('aria-hidden','false'); document.body.classList.add('kp-open'); }
 function kpHide(){ kpBackStop(); $('cardKeypad').classList.remove('show'); $('cardKeypad').setAttribute('aria-hidden','true'); document.body.classList.remove('kp-open'); }
 function kpBind(id){
   if(!kpIsField(id)) return;
   activeNumField=id;
-  const l=$('kpField'); if(l){ l.textContent=({f_per:'Per unit',f_full:'Full',f_extra:'Extra',f_loc:'Location #'})[id]; }
+  const l=$('kpField'); if(l){ l.textContent=({f_per:'Per unit',f_full:'Full',f_extra:'Extra',f_loc:'Location #',rowNum:'Row #'})[id]; }
   kpShow();
   const el=$(id); if(el){ setTimeout(()=>scrollFieldUp(el, id==='f_loc'?'.total-strip':null),40); } // keep it above the pad
 }
@@ -1299,6 +1484,7 @@ function kpTap(e,k){
   el.dispatchEvent(new Event('input',{bubbles:true}));      // fires calc() for the total
 }
 function kpAdvance(){
+  if(activeNumField==='rowNum'){ const el=$('rowNum'); if(el) el.blur(); loadRow(); return; }
   if(activeNumField==='f_per'){ nextField('f_full'); }
   else if(activeNumField==='f_full'){ nextField('f_extra'); }
   else if(activeNumField==='f_extra'){ nextField('f_loc'); }
@@ -1399,8 +1585,9 @@ function cardEnter(e, target){
   if(target==='save'){ saveEntry(); return; }
   nextField(target);
 }
-function clearCardOnly(){ kpHide(); $('cardMount').innerHTML=''; state.current=null; state.editIndex=null; }
-function clearCard(){ clearCardOnly(); $('notFound').classList.add('hide'); focusScan(); }
+function clearCardOnly(){ kpHide(); $('cardMount').innerHTML=''; state.current=null; state.editIndex=null;
+  if(state.mode==='row'){ const rp=$('rowPanel'); if(rp) rp.classList.remove('hide'); } }
+function clearCard(){ clearCardOnly(); $('notFound').classList.add('hide'); if(state.mode==='row'){ renderRowPanel(); } else { focusScan(); } }
 
 /* ---- location sanity check ----
    A common slip is dropping a digit (meaning M-088 but typing M-008 -> 8 instead of 88). We compare
@@ -1503,7 +1690,7 @@ async function saveEntry(){
       renderRecent();
       toast('Saved · '+total.toLocaleString()+' units');
       clearCardOnly();
-      focusScan();
+      if(state.mode==='row'){ renderRowPanel(); } else { focusScan(); }
       // Re-read from the sheet so the just-added row gets its real tab/row reference. Without this
       // the optimistic entry has no __tab/__row, so editing it immediately failed until an app
       // reload (which re-fetched with real references). This makes re-entry work right away.

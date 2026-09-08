@@ -539,7 +539,7 @@ var API_SECRET = '';
 
 /* Bump this on every page change — the number shows in the bottom-right corner so you can
    confirm a reload actually picked up the latest page (an old cached page has no tag). */
-var APP_VERSION = 'v49';
+var APP_VERSION = 'v50';
 
 /* Call a backend function: callApi('fn', [arg1, arg2]) -> Promise(result). */
 function callApi(fn, args){
@@ -921,10 +921,27 @@ function loadLogs(){
 }
 // Location key that matches the app's own normalization (building + numeric value, leading zeros dropped).
 function logLocKey(loc){ const p=parseLoc(loc); return p.bldg+'#'+(p.num||''); }
+// Parse a log Count Date (ISO "2026-09-03", "9/3/2026", or anything Date.parse handles) to a
+// comparable number so we can pick the newest.
+function logDateVal(s){
+  s=String(s||'').trim(); if(!s) return 0;
+  var m=/^(\d{4})-(\d{1,2})-(\d{1,2})/.exec(s);
+  if(m) return Date.UTC(+m[1],+m[2]-1,+m[3]);
+  m=/^(\d{1,2})\/(\d{1,2})\/(\d{2,4})/.exec(s);
+  if(m){ var y=+m[3]; if(y<100) y+=2000; return Date.UTC(y,+m[1]-1,+m[2]); }
+  var t=Date.parse(s); return isNaN(t)?0:t;
+}
 function buildLogIndex(){
   ['metals','plastics'].forEach(function(dep){
+    const byLoc={};
+    (LOG[dep]||[]).forEach(function(r){ const k=logLocKey(r.loc); if(!k||k==='#')return; (byLoc[k]=byLoc[k]||[]).push(r); });
+    // At each location keep ONLY the most-recently-counted date (older counts are superseded).
     const idx={};
-    (LOG[dep]||[]).forEach(function(r){ const k=logLocKey(r.loc); if(!k||k==='#')return; (idx[k]=idx[k]||[]).push(r); });
+    Object.keys(byLoc).forEach(function(k){
+      const rows=byLoc[k];
+      let maxV=0; rows.forEach(function(r){ const v=logDateVal(r.countDate); if(v>maxV) maxV=v; });
+      idx[k]= maxV ? rows.filter(function(r){ return logDateVal(r.countDate)===maxV; }) : rows;
+    });
     LOGIDX[dep]=idx;
   });
 }
@@ -957,7 +974,7 @@ function updateLogHint(){
   if(!here.length){ box.hidden=true; return; }
   const mine=here.filter(function(r){ return norm(r.product)===norm(code) || (state.current.desc && norm(r.desc)===norm(state.current.desc)); });
   if(mine.length){
-    const r=mine[0], last=Number(r.qty)||0;
+    const r=mine[0], last=mine.reduce(function(s,x){ return s+(Number(x.qty)||0); },0);
     const per=asNum($('f_per')&&$('f_per').value), full=asNum($('f_full')&&$('f_full').value), extra=asNum($('f_extra')&&$('f_extra').value);
     const cur=Math.round(full*per+extra);
     let delta='';

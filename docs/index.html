@@ -227,6 +227,8 @@ body.tk-open .modal-card{margin-top:12px;margin-bottom:12px}
 .rowpick select{flex:0 0 128px;height:52px;border:1.5px solid var(--line);border-radius:10px;padding:0 8px;background:#fff}
 .rowpick input{flex:1;height:52px;border:1.5px solid var(--line);border-radius:10px;padding:0 12px;background:#fff}
 .rowpick .rowgo{flex:0 0 88px;height:52px}
+.rowstep{display:flex;gap:8px;margin-top:8px}
+.rowstep .btn{flex:1;height:46px;font-family:'JetBrains Mono';font-weight:800;font-size:15px}
 .rowinfo{margin:12px 2px 8px}
 .rowhdr{font-size:13px;color:var(--ink)}
 .rowhint{font-size:13px;color:var(--ink-soft);background:#fff;border:1px solid var(--line);border-radius:10px;padding:12px}
@@ -429,6 +431,10 @@ html.modal-lock body{position:fixed;left:0;right:0;width:100%;overflow:hidden}
             <input id="rowNum" class="mono" inputmode="none" readonly placeholder="number" onfocus="kpBind('rowNum')" onblur="kpOnBlur()">
             <button type="button" class="btn primary rowgo" onclick="loadRow()">Show</button>
           </div>
+          <div class="rowstep">
+            <button type="button" class="btn ghost" id="rowPrev" onclick="rowStep(-1)">◀ Prev</button>
+            <button type="button" class="btn ghost" id="rowNext" onclick="rowStep(1)">Next ▶</button>
+          </div>
         </div>
         <div id="rowInfo" class="rowinfo"></div>
         <div id="rowList" class="rowlist"></div>
@@ -576,7 +582,7 @@ var API_SECRET = '';
 
 /* Bump this on every page change — the number shows in the bottom-right corner so you can
    confirm a reload actually picked up the latest page (an old cached page has no tag). */
-var APP_VERSION = 'v51';
+var APP_VERSION = 'v52';
 
 /* Call a backend function: callApi('fn', [arg1, arg2]) -> Promise(result). */
 function callApi(fn, args){
@@ -1073,13 +1079,32 @@ function syncMode(){
   if(m==='row'){ fillRowBuildings(); renderRowPanel(); }
 }
 function loadRow(){ kpHide(); renderRowPanel(); }
+// Step the row number up/down by one and reload — walk locations without retyping.
+function rowStep(delta){
+  const loc=composeRowLoc(); const p=parseLoc(loc);
+  if(p.bldg && $('rowBldg') && !$('rowBldg').value){ $('rowBldg').value=p.bldg; }   // keep the building
+  let n = p.num!=='' ? Number(p.num) : 0;
+  n = Math.max(1, n+delta);
+  const el=$('rowNum'); if(el){ el.value=String(n); }
+  _kpFresh=false; kpHide();
+  renderRowPanel();
+}
 // Session entries already recorded at this location (so we can tick counted products).
 function countedAt(loc){ const key=logLocKey(loc); return activeEntries().filter(function(e){ return logLocKey(e.loc)===key; }); }
 function rowIsCounted(counted, r){ return counted.some(function(e){ return norm(e.code)===norm(r.product) || (r.desc && norm(e.desc)===norm(r.desc)); }); }
 function rowCountedEntry(counted, r){ return counted.find(function(e){ return norm(e.code)===norm(r.product) || (r.desc && norm(e.desc)===norm(r.desc)); }); }
 function rowSkipKey(loc,i){ return logLocKey(loc)+'|'+i; }
+// Show the target location on the Prev/Next buttons (e.g. "◀ S-006" / "S-008 ▶").
+function updateRowStepLabels(){
+  const prev=$('rowPrev'), next=$('rowNext'); if(!prev||!next) return;
+  const p=parseLoc(composeRowLoc());
+  const pad=x=>(p.bldg?p.bldg+'-':'')+String(x).padStart(3,'0');
+  if(p.num!==''){ const n=Number(p.num); prev.textContent = n>1?('◀ '+pad(n-1)):'◀ Prev'; next.textContent = pad(n+1)+' ▶'; }
+  else { prev.textContent='◀ Prev'; next.textContent='Next ▶'; }
+}
 function renderRowPanel(){
   fillRowBuildings();
+  updateRowStepLabels();
   const info=$('rowInfo'), list=$('rowList'); if(!info||!list) return;
   const loc=composeRowLoc();
   if(!loc || parseLoc(loc).num===''){
@@ -1449,12 +1474,14 @@ function scrollFieldUp(el, anchorSel){
 // (Per/Full/Extra/Location) use inputmode=none and this docked keypad instead. Buttons fire on a
 // single pointerdown (no mouse+touch double-firing) and edit whichever box is active.
 var activeNumField='f_full';
+var _kpFresh=false;   // when true, the next digit replaces the field (used for the row # box)
 function kpIsField(id){ return id==='f_per'||id==='f_full'||id==='f_extra'||id==='f_loc'||id==='rowNum'; }
 function kpShow(){ tkHide(); $('cardKeypad').classList.add('show'); $('cardKeypad').setAttribute('aria-hidden','false'); document.body.classList.add('kp-open'); }
 function kpHide(){ kpBackStop(); $('cardKeypad').classList.remove('show'); $('cardKeypad').setAttribute('aria-hidden','true'); document.body.classList.remove('kp-open'); }
 function kpBind(id){
   if(!kpIsField(id)) return;
   activeNumField=id;
+  _kpFresh = (id==='rowNum');   // start fresh: first digit replaces the old row number
   const l=$('kpField'); if(l){ l.textContent=({f_per:'Per unit',f_full:'Full',f_extra:'Extra',f_loc:'Location #',rowNum:'Row #'})[id]; }
   kpShow();
   const el=$(id); if(el){ setTimeout(()=>scrollFieldUp(el, id==='f_loc'?'.total-strip':null),40); } // keep it above the pad
@@ -1480,6 +1507,7 @@ function kpTap(e,k){
   if(e){ e.preventDefault(); }
   const el=$(activeNumField); if(!el) return;
   if(k==='next'){ kpAdvance(); return; }
+  if(_kpFresh){ el.value=''; _kpFresh=false; }              // first digit clears what was there
   el.value = (el.value==='0' ? '' : (el.value||'')) + k;   // replace the placeholder 0 on first digit
   el.dispatchEvent(new Event('input',{bubbles:true}));      // fires calc() for the total
 }
@@ -1492,7 +1520,7 @@ function kpAdvance(){
 }
 /* press-and-hold backspace: one delete on tap, then rapid delete while held */
 var kpRepeatTO=null, kpRepeatIV=null;
-function kpDoBack(){ const el=$(activeNumField); if(!el||!el.value){ kpBackStop(); return; } el.value=el.value.slice(0,-1); el.dispatchEvent(new Event('input',{bubbles:true})); }
+function kpDoBack(){ _kpFresh=false; const el=$(activeNumField); if(!el||!el.value){ kpBackStop(); return; } el.value=el.value.slice(0,-1); el.dispatchEvent(new Event('input',{bubbles:true})); }
 function kpBackStart(e){ if(e){ e.preventDefault(); } kpDoBack(); clearTimeout(kpRepeatTO); kpRepeatTO=setTimeout(function(){ kpRepeatIV=setInterval(kpDoBack,60); },400); }
 function kpBackStop(){ clearTimeout(kpRepeatTO); clearInterval(kpRepeatIV); kpRepeatIV=null; }
 function kpOpenCalc(e){ if(e){ e.preventDefault(); } openCalc(); }

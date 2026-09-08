@@ -229,6 +229,7 @@ body.tk-open .modal-card{margin-top:12px;margin-bottom:12px}
 .rowpick .rowgo{flex:0 0 88px;height:52px}
 .rowstep{display:flex;gap:8px;margin-top:8px}
 .rowstep .btn{flex:1;height:46px;font-family:'JetBrains Mono';font-weight:800;font-size:15px}
+.rowstep .rowcalc{flex:0 0 56px;font-size:20px}
 .rowinfo{margin:12px 2px 8px}
 .rowhdr{font-size:13px;color:var(--ink)}
 .rowhint{font-size:13px;color:var(--ink-soft);background:#fff;border:1px solid var(--line);border-radius:10px;padding:12px}
@@ -434,6 +435,7 @@ html.modal-lock body{position:fixed;left:0;right:0;width:100%;overflow:hidden}
           <div class="rowstep">
             <button type="button" class="btn ghost" id="rowPrev" onclick="rowStep(-1)">◀ Prev</button>
             <button type="button" class="btn ghost" id="rowNext" onclick="rowStep(1)">Next ▶</button>
+            <button type="button" class="btn ghost rowcalc" onclick="openCalc()" aria-label="Calculator">🧮</button>
           </div>
         </div>
         <div id="rowInfo" class="rowinfo"></div>
@@ -582,7 +584,7 @@ var API_SECRET = '';
 
 /* Bump this on every page change — the number shows in the bottom-right corner so you can
    confirm a reload actually picked up the latest page (an old cached page has no tag). */
-var APP_VERSION = 'v52';
+var APP_VERSION = 'v53';
 
 /* Call a backend function: callApi('fn', [arg1, arg2]) -> Promise(result). */
 function callApi(fn, args){
@@ -1224,6 +1226,7 @@ function unlockScroll(){
   window.scrollTo(0, _lockY);                             // restore instantly, no animation
 }
 function openCalc(){
+  calcClear();                 // always start on a fresh, zeroed calculator
   $('calcModal').classList.remove('hide');
   lockScroll();
   renderCalcHist();
@@ -1232,7 +1235,8 @@ function closeCalc(){
   $('calcModal').classList.add('hide');
   unlockScroll();
   // Bring the keypad back to the box you were on — without focusing (which would scroll the page).
-  if($(activeNumField)) kpShow();
+  // Only when a count card is actually open (not for the scratch calculator in Count-by-row).
+  if(state.current && $(activeNumField)) kpShow();
 }
 function calcPress(ch){ $('calcDisplay').value+=ch; }
 function calcBack(){ const d=$('calcDisplay'); d.value=d.value.slice(0,-1); }

@@ -50,7 +50,7 @@ export default {
       new Response(JSON.stringify(obj), { status, headers: { ...cors, 'Content-Type': 'application/json' } });
 
     if (request.method === 'OPTIONS') return new Response(null, { status: 204, headers: cors });
-    if (request.method === 'GET') return json({ ok: true, service: 'inventory-count-api', build: 'v8' }, 200);
+    if (request.method === 'GET') return json({ ok: true, service: 'inventory-count-api', build: 'v9' }, 200);
     if (request.method !== 'POST') return json({ ok: false, error: 'Method not allowed' }, 405);
 
     let payload;
@@ -71,8 +71,9 @@ export default {
 
 // ---------------- dispatcher ----------------
 async function handle(fn, args, env) {
-  const sheets = await makeSheets(env);
   args = args || [];
+  if (fn === 'getLogs') return getLogs(env);   // reads a SEPARATE, read-only workbook
+  const sheets = await makeSheets(env);
   switch (fn) {
     case 'getLookups': return getLookups(sheets);
     case 'appendEntry': return appendEntry(sheets, args[0], args[1]);
@@ -83,6 +84,47 @@ async function handle(fn, args, env) {
     default:
       throw new Error('Unknown function: ' + fn);
   }
+}
+
+// ---------------- read-only history logs ----------------
+// A SEPARATE workbook holds "Metals Log" / "Plastics Log" — where each product was last counted and
+// how many. The app reads these to show "last counted here" info; it NEVER writes to this workbook.
+// The service account (GCP_SA_EMAIL) must be given Viewer access to this workbook for reads to work.
+const LOG_SHEET_ID = '1NVCx-n9_Zha9u1HPyi3hGLBQ4EyWHx7AbA4zs36hbYc';
+// Columns: Count Date | Logged At | Kind | Location | Product | Description | Quantity
+async function getLogs(env) {
+  const sheets = await makeSheets(env, LOG_SHEET_ID);
+  const titles = await sheets.titles();
+  const findTab = (kw) => titles.find((t) => String(t).toLowerCase().replace(/[_\s]+/g, ' ').indexOf(kw) !== -1);
+  const parseLog = async (tab) => {
+    if (!tab) return [];
+    let values;
+    try { values = await sheets.readAll(tab); }
+    catch (e) { if (String((e && e.message) || '').indexOf('Unable to parse range') !== -1) return []; throw e; }
+    if (!values.length) return [];
+    const H = values[0].map((h) => String(h).trim().toLowerCase());
+    const at = (n) => H.indexOf(n);
+    const iDate = at('count date'), iKind = at('kind'), iLoc = at('location'),
+          iProd = at('product'), iDesc = at('description'), iQty = at('quantity');
+    const g = (r, i) => str_(i === -1 ? '' : r[i]);
+    const out = [];
+    for (let n = 1; n < values.length; n++) {
+      const r = values[n] || [];
+      if (str_(r[0]).indexOf('__META__') !== -1) continue;   // skip the meta marker row
+      const loc = g(r, iLoc), prod = g(r, iProd);
+      if (!loc && !prod) continue;
+      out.push({
+        countDate: g(r, iDate), kind: g(r, iKind), loc: loc, product: prod,
+        desc: g(r, iDesc), qty: num_(iQty === -1 ? '' : r[iQty]),
+      });
+    }
+    return out;
+  };
+  const [metals, plastics] = await Promise.all([
+    parseLog(findTab('metals log')),
+    parseLog(findTab('plastics log')),
+  ]);
+  return { metals: metals, plastics: plastics };
 }
 
 // ---------------- value helpers (match the old Apps Script) ----------------
@@ -268,9 +310,9 @@ async function getToken(env) {
   cachedToken = await mintToken(env);
   return cachedToken.token;
 }
-async function makeSheets(env) {
+async function makeSheets(env, overrideId) {
   const token = await getToken(env);
-  const id = env.SHEET_ID || DEFAULT_SHEET_ID;
+  const id = overrideId || env.SHEET_ID || DEFAULT_SHEET_ID;
   const base = 'https://sheets.googleapis.com/v4/spreadsheets/' + id;
   const auth = { Authorization: 'Bearer ' + token };
   async function call(url, opts) {
@@ -300,6 +342,11 @@ async function makeSheets(env) {
     async update(rangeA1, values) {
       return call(base + '/values/' + encodeURIComponent(rangeA1) + '?valueInputOption=RAW',
         { method: 'PUT', headers: { ...auth, 'Content-Type': 'application/json' }, body: JSON.stringify({ values }) });
+    },
+    // List every tab title in the workbook (used to locate the log tabs by name).
+    async titles() {
+      const meta = await call(base + '?fields=sheets.properties.title', { headers: auth });
+      return (meta.sheets || []).map((s) => s.properties && s.properties.title).filter(Boolean);
     },
     // Resolve a tab's numeric sheetId (needed to delete a row).
     async sheetId(title) {

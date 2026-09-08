@@ -208,6 +208,18 @@ body.tk-open .modal-card{margin-top:12px;margin-bottom:12px}
 .btn.primary{background:var(--dept);color:#fff}
 .btn.primary:active{filter:brightness(.92)}
 .btn.ghost{background:transparent;border:1.5px solid var(--line);color:var(--ink-soft);flex:0 0 96px}
+/* log toggle bar (top of count) + "last counted here" hint on the card */
+.logbar{display:flex;align-items:center;justify-content:space-between;gap:10px;margin:0 0 10px;padding:8px 12px;
+  background:#fff;border:1px solid var(--line);border-radius:10px}
+.logtgl{display:flex;align-items:center;gap:8px;font-size:13px;font-weight:700;color:var(--ink);cursor:pointer}
+.logtgl input{width:20px;height:20px;accent-color:var(--dept)}
+.logstat{font-size:11px;font-weight:700;letter-spacing:.04em;text-transform:uppercase;color:var(--ink-soft)}
+.logstat.ok{color:var(--dept)} .logstat.err{color:var(--metal-accent)}
+.loghint{background:var(--dept-soft);border:1px solid transparent;border-radius:10px;padding:9px 12px;font-size:13px;line-height:1.35;color:var(--ink)}
+.loghint.warn{background:#FFF8E6;border-color:var(--metal-accent)}
+.loghint .lh-i{margin-right:4px}
+.loghint .lh-note{font-size:11px;color:var(--ink-soft);font-weight:600}
+.loghint b.up{color:#1b7f3b} .loghint b.down{color:#c0392b}
 
 /* recent list */
 .recent{margin-top:2px}
@@ -350,6 +362,10 @@ html.modal-lock body{position:fixed;left:0;right:0;width:100%;overflow:hidden}
     </div>
 
     <div class="body">
+      <div class="logbar" id="logBar">
+        <label class="logtgl"><input type="checkbox" id="logToggle" onchange="toggleLog(this.checked)"> <span>Compare to last count (log)</span></label>
+        <span class="logstat" id="logStatus"></span>
+      </div>
       <div class="seg hide" id="metalSeg">
         <button id="segEnds" class="on" onclick="setMetalKind('ends')">Ends</button>
         <button id="segCans" onclick="setMetalKind('cans')">Cans</button>
@@ -523,7 +539,7 @@ var API_SECRET = '';
 
 /* Bump this on every page change — the number shows in the bottom-right corner so you can
    confirm a reload actually picked up the latest page (an old cached page has no tag). */
-var APP_VERSION = 'v48';
+var APP_VERSION = 'v49';
 
 /* Call a backend function: callApi('fn', [arg1, arg2]) -> Promise(result). */
 function callApi(fn, args){
@@ -583,9 +599,8 @@ function setBuilding(v){
 // Card's location dropdown changed. For a NEW entry, keep the "building you're in" in sync;
 // while editing, only change this entry (don't move the current building).
 function onCardBldg(v){
-  if(state.editIndex!=null) return;
-  state.building=v; persistSession();
-  const top=$('topBldg'); if(top) top.value=v;
+  if(state.editIndex==null){ state.building=v; persistSession(); const top=$('topBldg'); if(top) top.value=v; }
+  updateLogHint();   // building changed → refresh the "last counted here" hint
 }
 
 /* ---- session persistence: entries survive closing/reopening the app ---- */
@@ -684,7 +699,7 @@ function openDept(dept){
   $('landing').style.display='none';
   $('count').style.display='flex';
   const tb=$('topBldg'); if(tb) tb.value=state.building||'';
-  clearCard(); renderRecent(); updateHints();
+  clearCard(); renderRecent(); updateHints(); updateLogBar();
   refreshEntries();   // pull the authoritative list from the sheet
   focusScan();
 }
@@ -698,7 +713,7 @@ function setMetalKind(k){
   $('segEnds').classList.toggle('on',k==='ends');
   $('segCans').classList.toggle('on',k==='cans');
   $('scanLabel').textContent='Scan barcode';
-  clearCard(); closeSearch(); updateHints(); focusScan();
+  clearCard(); closeSearch(); updateHints(); updateLogBar(); focusScan();
 }
 function updateHints(){
   const list=activeList();
@@ -892,6 +907,69 @@ function switchSearchTo(key){
   if(key==='plastics'){ if(state.dept!=='plastics') openDept('plastics'); }
   else { if(state.dept!=='metals') openDept('metals'); setMetalKind(key); }
   openSearch(); const inp=$('searchInput'); if(inp){ inp.value=raw; runSearch(); }
+}
+
+/* ---- read-only history log ("last counted here") ---- */
+// Loaded once from the SEPARATE log workbook via the worker's getLogs. Never written to.
+var LOG={metals:[],plastics:[]}, LOGIDX={metals:{},plastics:{}}, LOG_LOADED=false, LOG_ERR=false;
+var LOG_ON=(function(){ try{ return localStorage.getItem('logOn')!=='0'; }catch(_){ return true; } })();  // default on
+function loadLogs(){
+  return callApi('getLogs',[]).then(function(res){
+    LOG.metals=(res&&res.metals)||[]; LOG.plastics=(res&&res.plastics)||[];
+    buildLogIndex(); LOG_LOADED=true; LOG_ERR=false; updateLogBar(); updateLogHint();
+  }).catch(function(err){ LOG_ERR=true; LOG_LOADED=false; updateLogBar(); console.warn('log load failed',err); });
+}
+// Location key that matches the app's own normalization (building + numeric value, leading zeros dropped).
+function logLocKey(loc){ const p=parseLoc(loc); return p.bldg+'#'+(p.num||''); }
+function buildLogIndex(){
+  ['metals','plastics'].forEach(function(dep){
+    const idx={};
+    (LOG[dep]||[]).forEach(function(r){ const k=logLocKey(r.loc); if(!k||k==='#')return; (idx[k]=idx[k]||[]).push(r); });
+    LOGIDX[dep]=idx;
+  });
+}
+// Every logged product at a location, filtered to the active Ends/Cans kind for metals.
+function logForLoc(loc){
+  const dep = state.dept==='plastics'?'plastics':'metals';
+  const rows=(LOGIDX[dep]||{})[logLocKey(loc)]||[];
+  if(state.dept==='metals'){ const kind=state.metalKind==='cans'?'Cans':'Ends'; return rows.filter(function(r){ return !r.kind || norm(r.kind)===norm(kind); }); }
+  return rows;
+}
+function toggleLog(on){ LOG_ON=!!on; try{ localStorage.setItem('logOn', on?'1':'0'); }catch(_){}
+  updateLogBar(); updateLogHint(); }
+function updateLogBar(){
+  const t=$('logToggle'); if(t) t.checked=LOG_ON;
+  const s=$('logStatus'); if(!s) return;
+  if(!LOG_ON){ s.textContent='off'; s.className='logstat'; return; }
+  if(LOG_ERR){ s.textContent='log unavailable'; s.className='logstat err'; return; }
+  if(!LOG_LOADED){ s.textContent='loading…'; s.className='logstat'; return; }
+  const dep=state.dept==='plastics'?'plastics':'metals';
+  s.textContent=(LOG[dep]||[]).length+' logged'; s.className='logstat ok';
+}
+// The "last counted here" line on the card. Updates live as location / counts change.
+function updateLogHint(){
+  const box=$('logHint'); if(!box) return;
+  if(!LOG_ON || !LOG_LOADED || !state.current){ box.hidden=true; return; }
+  const code=(($('f_code')&&$('f_code').value)||state.current.code||'').trim();
+  const loc=composeLoc();
+  if(!loc || parseLoc(loc).num===''){ box.hidden=true; return; }
+  const here=logForLoc(loc);
+  if(!here.length){ box.hidden=true; return; }
+  const mine=here.filter(function(r){ return norm(r.product)===norm(code) || (state.current.desc && norm(r.desc)===norm(state.current.desc)); });
+  if(mine.length){
+    const r=mine[0], last=Number(r.qty)||0;
+    const per=asNum($('f_per')&&$('f_per').value), full=asNum($('f_full')&&$('f_full').value), extra=asNum($('f_extra')&&$('f_extra').value);
+    const cur=Math.round(full*per+extra);
+    let delta='';
+    if(cur>0){ const d=cur-last; delta = d===0 ? ' · <b>same as last</b>' : (d>0?' · <b class="up">+'+d.toLocaleString()+'</b>':' · <b class="down">'+d.toLocaleString()+'</b>'); }
+    box.innerHTML='<span class="lh-i">📋</span> Last counted here: <b>'+last.toLocaleString()+'</b> units'+(r.countDate?' · '+esc(String(r.countDate)):'')+delta;
+    box.className='fld full loghint match';
+  } else {
+    const list=here.slice(0,3).map(function(r){ return esc(r.product||r.desc)+' ('+(Number(r.qty)||0).toLocaleString()+')'; }).join(', ');
+    box.innerHTML='<span class="lh-i">📋</span> This spot last held: '+list+(here.length>3?', …':'')+'<br><span class="lh-note">Not this product — double-check the location.</span>';
+    box.className='fld full loghint warn';
+  }
+  box.hidden=false;
 }
 
 /* ---- pop-up calculator ---- */
@@ -1111,8 +1189,10 @@ function selectItem(it, edit){
         <div class="fld full"><label>Location — building + number</label>
           <div class="locrow">
             <select id="f_bldg" onchange="onCardBldg(this.value)">${bldgOpts}</select>
-            <input id="f_loc" class="mono" inputmode="none" readonly enterkeyhint="done" placeholder="number" value="${vNum}" onfocus="kpBind('f_loc')" onblur="kpOnBlur()" onkeydown="cardEnter(event,'save')">
+            <input id="f_loc" class="mono" inputmode="none" readonly enterkeyhint="done" placeholder="number" value="${vNum}" onfocus="kpBind('f_loc')" onblur="kpOnBlur()" oninput="updateLogHint()" onkeydown="cardEnter(event,'save')">
           </div></div>
+
+        <div class="fld full loghint" id="logHint" hidden></div>
 
         <div class="total-strip"><span class="lbl">Total count</span>
           <span class="val"><span id="totalVal">0</span><small>units</small></span></div>
@@ -1139,6 +1219,7 @@ function calc(){
   const per=asNum($('f_per').value), full=asNum($('f_full').value), extra=asNum($('f_extra').value);
   const total=Math.round(full*per+extra);
   $('totalVal').textContent=total.toLocaleString();
+  updateLogHint();   // live delta vs. the last logged count
 }
 /* Focus a box (the onfocus handler shows the pad and scrolls it into view). */
 function nextField(id){ const el=$(id); if(el){ kpBind(id); el.focus(); if(el.select) el.select(); } }
@@ -1498,6 +1579,7 @@ function onDataFail(err){
   console.error(err);
 }
 callApi('getLookups', []).then(onData).catch(onDataFail);
+loadLogs();   // read-only "last counted here" history (best-effort; app works fine without it)
 
 /* ---- toast ---- */
 let toastT;

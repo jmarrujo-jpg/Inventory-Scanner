@@ -261,8 +261,11 @@ body.tk-open .modal-card{margin-top:12px;margin-bottom:12px}
 .entry .info .d{font-size:14px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .entry .info .m{font-size:11px;color:var(--ink-soft);margin-top:1px}
 .entry .info .loc{font-size:12px;color:var(--dept);font-weight:700;margin-top:3px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.entry .qty{font-family:'JetBrains Mono';font-weight:800;font-size:18px;text-align:right;flex:none}
-.entry .qty small{display:block;font-size:9px;color:var(--ink-soft);letter-spacing:.08em}
+.entry .qty{font-family:'JetBrains Mono';text-align:right;flex:none;display:flex;flex-direction:column;align-items:flex-end;gap:2px}
+.entry .qty .big{font-weight:800;font-size:21px;line-height:1;white-space:nowrap}
+.entry .qty .big small{font-size:9px;font-weight:700;color:var(--ink-soft);letter-spacing:.04em;margin-left:1px}
+.entry .qty .big .sep{font-weight:600;opacity:.45;margin:0 3px}
+.entry .qty .tot{font-size:10px;font-weight:600;color:var(--ink-soft);letter-spacing:.03em}
 .entry .editbtn{flex:none;width:40px;height:40px;border-radius:9px;background:var(--dept-soft);color:var(--dept);
   font-size:17px;display:grid;place-items:center;cursor:pointer}
 .entry .editbtn:active{filter:brightness(.94)}
@@ -584,7 +587,7 @@ var API_SECRET = '';
 
 /* Bump this on every page change — the number shows in the bottom-right corner so you can
    confirm a reload actually picked up the latest page (an old cached page has no tag). */
-var APP_VERSION = 'v54';
+var APP_VERSION = 'v55';
 
 /* Call a backend function: callApi('fn', [arg1, arg2]) -> Promise(result). */
 function callApi(fn, args){
@@ -1794,16 +1797,23 @@ function renderRecent(){
   $('sessCount').textContent=list.length;
   const el=$('recentList');
   if(!list.length){ el.innerHTML='<div class="empty-recent">Scanned items will appear here after you save them.</div>'; return; }
-  el.innerHTML=list.map((e,i)=>`<div class="entry">
+  el.innerHTML=list.map((e,i)=>{
+    const full=Number(e.full)||0, extra=Number(e.extra)||0, tot=Number(e.total)||0;
+    let big='';
+    if(full>0) big+=`${full.toLocaleString()}<small>plt</small>`;
+    if(extra>0) big+=`${full>0?'<span class="sep">+</span>':''}${extra.toLocaleString()}<small>loose</small>`;
+    if(!big) big=`0<small>plt</small>`;
+    return `<div class="entry">
      <div class="info">
        <div class="c">${esc(e.code||'no barcode')} · <span style="opacity:.7">${esc(e.category)}</span></div>
        <div class="d">${esc(e.desc)}</div>
        <div class="m">${e.full} full × ${e.per} + ${e.extra} loose · ${esc(e.counter)}</div>
        <div class="loc">📍 ${esc(e.loc||'no location')}</div>
      </div>
-     <div class="qty">${(Number(e.total)||0).toLocaleString()}<small>UNITS</small></div>
+     <div class="qty"><div class="big">${big}</div><small class="tot">${tot.toLocaleString()} units</small></div>
      <button class="editbtn" onclick="editEntry(${i})" aria-label="Edit entry">✎</button>
-   </div>`).join('');
+   </div>`;
+  }).join('');
 }
 function clearSession(){
   const list=activeEntries();

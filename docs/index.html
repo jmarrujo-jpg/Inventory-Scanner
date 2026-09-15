@@ -587,7 +587,7 @@ var API_SECRET = '';
 
 /* Bump this on every page change — the number shows in the bottom-right corner so you can
    confirm a reload actually picked up the latest page (an old cached page has no tag). */
-var APP_VERSION = 'v55';
+var APP_VERSION = 'v56';
 
 /* Call a backend function: callApi('fn', [arg1, arg2]) -> Promise(result). */
 function callApi(fn, args){
@@ -1807,7 +1807,7 @@ function renderRecent(){
      <div class="info">
        <div class="c">${esc(e.code||'no barcode')} · <span style="opacity:.7">${esc(e.category)}</span></div>
        <div class="d">${esc(e.desc)}</div>
-       <div class="m">${e.full} full × ${e.per} + ${e.extra} loose · ${esc(e.counter)}</div>
+       <div class="m">${Number(e.per)>0?`${e.per} per pallet · `:''}${esc(e.counter)}</div>
        <div class="loc">📍 ${esc(e.loc||'no location')}</div>
      </div>
      <div class="qty"><div class="big">${big}</div><small class="tot">${tot.toLocaleString()} units</small></div>

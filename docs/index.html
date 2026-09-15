@@ -584,7 +584,7 @@ var API_SECRET = '';
 
 /* Bump this on every page change — the number shows in the bottom-right corner so you can
    confirm a reload actually picked up the latest page (an old cached page has no tag). */
-var APP_VERSION = 'v53';
+var APP_VERSION = 'v54';
 
 /* Call a backend function: callApi('fn', [arg1, arg2]) -> Promise(result). */
 function callApi(fn, args){
@@ -959,7 +959,7 @@ function switchSearchTo(key){
 
 /* ---- read-only history log ("last counted here") ---- */
 // Loaded once from the SEPARATE log workbook via the worker's getLogs. Never written to.
-var LOG={metals:[],plastics:[]}, LOGIDX={metals:{},plastics:{}}, LOG_LOADED=false, LOG_ERR=false;
+var LOG={metals:[],plastics:[]}, LOGIDX={metals:{},plastics:{}}, LOG_ANCHOR={ends:0,cans:0,plastics:0}, LOG_LOADED=false, LOG_ERR=false;
 var LOG_ON=true;   // "compare to last count" is always on
 function loadLogs(){
   return callApi('getLogs',[]).then(function(res){
@@ -986,19 +986,48 @@ function logDateVal(s){
   if(m){ var y=+m[3]; if(y<100) y+=2000; return Date.UTC(y,+m[1]-1,+m[2]); }
   var t=Date.parse(s); return isNaN(t)?0:t;
 }
+// The "last count" is one anchor DATE, decided per kind: Ends, Cans, and Plastics
+// each pick their own newest real count date. Only rows on that exact date count as
+// "last time" — a location with nothing on that date reads as empty (it held nothing
+// last count), instead of reaching back to whenever it last had stock.
+// Newest count date that is an actual count, not a stray one-off correction row.
+// A date qualifies when it has enough rows relative to that kind's biggest count day,
+// so a lone corrective entry can't hijack the anchor. Falls back to the newest date
+// if the data is too sparse for the test to mean anything.
+function anchorDateVal(rows){
+  const byDate={};
+  rows.forEach(function(r){ const v=logDateVal(r.countDate); if(!v) return; byDate[v]=(byDate[v]||0)+1; });
+  const keys=Object.keys(byDate); if(!keys.length) return 0;
+  let biggest=0; keys.forEach(function(k){ if(byDate[k]>biggest) biggest=byDate[k]; });
+  const thresh=Math.max(3, biggest*0.15);
+  let anchor=0, newest=0;
+  keys.forEach(function(k){ const v=Number(k); if(v>newest) newest=v; if(byDate[k]>=thresh && v>anchor) anchor=v; });
+  return anchor || newest;
+}
+// Rows for one kind, cut to that kind's anchor date. kindName null = take all (plastics).
+function anchoredRowsForKind(rows, kindName){
+  const cand = kindName ? rows.filter(function(r){ return !r.kind || norm(r.kind)===norm(kindName); }) : (rows||[]).slice();
+  const anchor = anchorDateVal(cand);
+  return { anchor:anchor, rows: anchor ? cand.filter(function(r){ return logDateVal(r.countDate)===anchor; }) : [] };
+}
+// Group already-anchored rows by location.
+function indexByLoc(rows){
+  const idx={};
+  rows.forEach(function(r){ const k=logLocKey(r.loc); if(!k||k==='#')return; (idx[k]=idx[k]||[]).push(r); });
+  return idx;
+}
 function buildLogIndex(){
-  ['metals','plastics'].forEach(function(dep){
-    const byLoc={};
-    (LOG[dep]||[]).forEach(function(r){ const k=logLocKey(r.loc); if(!k||k==='#')return; (byLoc[k]=byLoc[k]||[]).push(r); });
-    // At each location keep ONLY the most-recently-counted date (older counts are superseded).
-    const idx={};
-    Object.keys(byLoc).forEach(function(k){
-      const rows=byLoc[k];
-      let maxV=0; rows.forEach(function(r){ const v=logDateVal(r.countDate); if(v>maxV) maxV=v; });
-      idx[k]= maxV ? rows.filter(function(r){ return logDateVal(r.countDate)===maxV; }) : rows;
-    });
-    LOGIDX[dep]=idx;
-  });
+  // Metals: Ends and Cans anchor independently, then merge (dedup shared kind-less rows).
+  const ends=anchoredRowsForKind(LOG.metals||[],'Ends');
+  const cans=anchoredRowsForKind(LOG.metals||[],'Cans');
+  LOG_ANCHOR.ends=ends.anchor; LOG_ANCHOR.cans=cans.anchor;
+  const seen=new Set(), kept=[];
+  ends.rows.concat(cans.rows).forEach(function(r){ if(!seen.has(r)){ seen.add(r); kept.push(r); } });
+  LOGIDX.metals=indexByLoc(kept);
+  // Plastics: one anchor for the whole department.
+  const pl=anchoredRowsForKind(LOG.plastics||[],null);
+  LOG_ANCHOR.plastics=pl.anchor;
+  LOGIDX.plastics=indexByLoc(pl.rows);
 }
 // Every logged product at a location, filtered to the active Ends/Cans kind for metals.
 function logForLoc(loc){

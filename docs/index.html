@@ -208,6 +208,8 @@ body.tk-open .modal-card{margin-top:12px;margin-bottom:12px}
 .btn.primary{background:var(--dept);color:#fff}
 .btn.primary:active{filter:brightness(.92)}
 .btn.ghost{background:transparent;border:1.5px solid var(--line);color:var(--ink-soft);flex:0 0 96px}
+.btn.alt{background:var(--dept-soft);border:1.5px solid var(--line);color:var(--dept)}
+.btn.alt:active{filter:brightness(.96)}
 /* mode switch (Scan item / Count by row) at the top of the count screen */
 .modeseg{display:flex;gap:6px;margin:0 0 10px;padding:4px;background:#e9ebee;border-radius:12px}
 .modeseg button{flex:1;height:42px;border:0;border-radius:9px;background:transparent;color:var(--ink-soft);
@@ -366,7 +368,7 @@ html.modal-lock body{position:fixed;left:0;right:0;width:100%;overflow:hidden}
     </div>
     <p class="tagline">Pick a department to start counting.</p>
     <div class="choose">
-      <button class="dept-card metals" onclick="deptGate('metals')">
+      <button class="dept-card metals" onclick="metalsMenu()">
         <svg class="glyph" width="180" height="180" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="1.2"><rect x="6" y="3" width="12" height="18" rx="2"/><path d="M6 7h12M6 17h12"/></svg>
         <span class="eyebrow">Dept 01 — Cans &amp; Ends</span>
         <div><h2>Metals</h2><div class="sub">Scan a label, count cans and ends separately.</div></div>
@@ -526,6 +528,19 @@ html.modal-lock body{position:fixed;left:0;right:0;width:100%;overflow:hidden}
   </div>
 </div>
 
+<!-- Metals sub-menu: choose Finished Goods Count vs Metals Supplies -->
+<div id="metalsMenu" class="modal hide">
+  <div class="modal-card">
+    <div class="modal-title">Metals</div>
+    <div class="modal-hint">What would you like to count?</div>
+    <div class="gate-actions">
+      <button type="button" class="btn primary" onclick="metalsMenuPick('finished')">📦 Finished Goods Count</button>
+      <button type="button" class="btn alt" onclick="metalsMenuPick('supplies')">🔩 Metals Supplies</button>
+      <button type="button" class="btn ghost" onclick="metalsMenuClose()">← Go back</button>
+    </div>
+  </div>
+</div>
+
 <!-- Append / Delete gate shown when opening a department -->
 <div id="deptGate" class="modal hide">
   <div class="modal-card">
@@ -589,7 +604,7 @@ var API_SECRET = '';
 
 /* Bump this on every page change — the number shows in the bottom-right corner so you can
    confirm a reload actually picked up the latest page (an old cached page has no tag). */
-var APP_VERSION = 'v57';
+var APP_VERSION = 'v58';
 
 /* Call a backend function: callApi('fn', [arg1, arg2]) -> Promise(result). */
 function callApi(fn, args){
@@ -779,6 +794,15 @@ function updateHints(){
   $('scanCountHint').textContent=t;
 }
 function focusScan(){ setTimeout(()=>{ const el=$('scanInput'); if(el){ el.focus({preventScroll:true}); } window.scrollTo({top:0,behavior:'smooth'}); },60); }
+
+/* ---- Metals sub-menu (Finished Goods Count vs Metals Supplies) ---- */
+function metalsMenu(){ $('metalsMenu').classList.remove('hide'); }
+function metalsMenuClose(){ $('metalsMenu').classList.add('hide'); }
+function metalsMenuPick(which){
+  metalsMenuClose();
+  if(which==='finished'){ deptGate('metals'); }   // same flow as before: Append / Delete gate, then count
+  else { toast('Metals Supplies — coming soon'); } // to be defined
+}
 
 /* ---- Append / Delete gate (shown when opening a department) ---- */
 var gateDept=null;

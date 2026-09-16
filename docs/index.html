@@ -210,6 +210,31 @@ body.tk-open .modal-card{margin-top:12px;margin-bottom:12px}
 .btn.ghost{background:transparent;border:1.5px solid var(--line);color:var(--ink-soft);flex:0 0 96px}
 .btn.alt{background:var(--dept-soft);border:1.5px solid var(--line);color:var(--dept)}
 .btn.alt:active{filter:brightness(.96)}
+/* ---- Metals Supplies ---- */
+#supplies{display:none;flex-direction:column;min-height:100dvh}
+.sup-tools{display:flex;gap:8px;margin-bottom:14px}
+.sup-tools input{flex:1;height:var(--tap);border:2px solid var(--line);border-radius:11px;padding:0 14px;font-size:15px;background:#fff;outline:none}
+.sup-tools input:focus{border-color:var(--dept);box-shadow:0 0 0 3px var(--dept-soft)}
+.sup-tools .btn{flex:0 0 auto;height:var(--tap);padding:0 16px;font-size:15px}
+.sup-section{margin:0 0 20px}
+.sup-section>h2{font-family:'Archivo';font-weight:900;font-size:20px;color:var(--dept);margin:0 0 4px;letter-spacing:-.01em}
+.sup-section>.rule{height:2px;background:var(--dept-soft);border-radius:2px;margin:0 0 10px}
+.sup-group{margin:0 0 12px}
+.sup-group>h3{font-size:12px;font-weight:800;color:var(--ink-soft);text-transform:uppercase;letter-spacing:.07em;margin:0 0 7px}
+.sup-cat{font-size:11px;font-weight:800;color:var(--dept);opacity:.85;margin:8px 0 5px;letter-spacing:.03em}
+.sup-card{display:flex;align-items:center;gap:10px;background:#fff;border:1px solid var(--line);border-radius:11px;padding:11px 13px;margin-bottom:8px;width:100%;text-align:left}
+.sup-card:active{transform:scale(.99)}
+.sup-card.low{border-color:#E4B4AB;background:#FDF3F1}
+.sup-main{flex:1;min-width:0}
+.sup-name{font-weight:800;font-size:15px;color:var(--ink);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.sup-meta{font-size:12px;color:var(--ink-soft);margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.sup-qty{font-family:'JetBrains Mono';text-align:right;flex:none;display:flex;flex-direction:column;align-items:flex-end}
+.sup-qty .n{font-weight:800;font-size:21px;line-height:1;white-space:nowrap}
+.sup-qty .n small{font-size:10px;font-weight:700;color:var(--ink-soft);margin-left:2px;letter-spacing:.02em}
+.sup-qty.low .n{color:var(--danger)}
+.sup-qty .cnt{font-size:10px;color:var(--ink-soft);margin-top:3px;letter-spacing:.02em}
+.sup-flag{font-size:10px;font-weight:800;color:var(--danger);margin-top:2px;letter-spacing:.04em}
+.sup-empty{font-size:14px;color:var(--ink-soft);background:#fff;border:1px solid var(--line);border-radius:11px;padding:16px;text-align:center}
 /* mode switch (Scan item / Count by row) at the top of the count screen */
 .modeseg{display:flex;gap:6px;margin:0 0 10px;padding:4px;background:#e9ebee;border-radius:12px}
 .modeseg button{flex:1;height:42px;border:0;border-radius:9px;background:transparent;color:var(--ink-soft);
@@ -461,6 +486,25 @@ html.modal-lock body{position:fixed;left:0;right:0;width:100%;overflow:hidden}
     </div>
   </section>
 
+  <!-- METALS SUPPLIES (append-only supply counts → "Metals Supplies" tab) -->
+  <section id="supplies">
+    <div class="topbar">
+      <button class="back" onclick="suppliesHome()" aria-label="Back">←</button>
+      <div class="title">
+        <div class="dpt">Metals Supplies</div>
+        <div class="who">Record on-hand counts</div>
+      </div>
+      <div class="count-badge"><b id="supCount">0</b><small>items</small></div>
+    </div>
+    <div class="body">
+      <div class="sup-tools">
+        <input id="supSearch" placeholder="Filter items…" autocomplete="off" oninput="renderSupplies()">
+        <button type="button" class="btn primary" onclick="supAddOpen()">＋ Add item</button>
+      </div>
+      <div id="supList"><div class="sup-empty">Loading supplies…</div></div>
+    </div>
+  </section>
+
 </div>
 <div id="toast"></div>
 <div class="buildtag" id="buildTag"></div>
@@ -565,6 +609,54 @@ html.modal-lock body{position:fixed;left:0;right:0;width:100%;overflow:hidden}
   </div>
 </div>
 
+<!-- Metals Supplies: record a new count for one item -->
+<div id="supCountModal" class="modal hide">
+  <div class="modal-card">
+    <div class="modal-title" id="supcTitle">Item</div>
+    <div class="modal-hint" id="supcSub"></div>
+    <div class="fld"><label>Count — quantity on hand <span class="tag" id="supcUnit"></span></label>
+      <input id="supcQty" class="big" inputmode="decimal" autocomplete="off" placeholder="0" onfocus="this.select()"></div>
+    <div class="fld"><label>Note (optional)</label>
+      <input id="supcNote" autocomplete="off" placeholder="e.g. reordered, low, damaged"></div>
+    <div class="modal-actions">
+      <button type="button" class="btn ghost" onclick="supCountClose()">Cancel</button>
+      <button type="button" class="btn primary" id="supcSave" onclick="supCountSave()">Save count</button>
+    </div>
+  </div>
+</div>
+
+<!-- Metals Supplies: add a brand-new item (first count) -->
+<div id="supAddModal" class="modal hide">
+  <div class="modal-card">
+    <div class="modal-title">New supply item</div>
+    <div class="modal-hint">Reuse existing Section / Group / Category names exactly so the dashboard keeps history together.</div>
+    <div class="fld"><label>Section *</label>
+      <input id="saSection" list="dlSections" autocomplete="off" placeholder="top-level group"></div>
+    <div class="fld"><label>Group *</label>
+      <input id="saGroup" list="dlGroups" autocomplete="off" placeholder="column / machine grouping"></div>
+    <div class="fld"><label>Category (optional)</label>
+      <input id="saCategory" list="dlCats" autocomplete="off" placeholder="row label inside the group"></div>
+    <div class="fld"><label>Item *</label>
+      <input id="saItem" autocomplete="off" placeholder="item name / code"></div>
+    <div class="fld"><label>Quantity * <span class="tag">on hand now</span></label>
+      <input id="saQty" class="mono" inputmode="decimal" autocomplete="off" placeholder="0"></div>
+    <div class="fld"><label>Unit (optional)</label>
+      <input id="saUnit" list="dlUnits" autocomplete="off" placeholder="lbs, ea, barrels"></div>
+    <div class="fld"><label>Reorder At (optional)</label>
+      <input id="saReorder" class="mono" inputmode="decimal" autocomplete="off" placeholder="alert at or below"></div>
+    <div class="fld"><label>Note (optional)</label>
+      <input id="saNote" autocomplete="off" placeholder=""></div>
+    <div class="modal-actions">
+      <button type="button" class="btn ghost" onclick="supAddClose()">Cancel</button>
+      <button type="button" class="btn primary" id="saSave" onclick="supAddSave()">Add item</button>
+    </div>
+  </div>
+</div>
+<datalist id="dlSections"></datalist>
+<datalist id="dlGroups"></datalist>
+<datalist id="dlCats"></datalist>
+<datalist id="dlUnits"></datalist>
+
 <!-- docked number pad: slides up while a count box (Full/Extra/Location) is active -->
 <div class="keypad" id="cardKeypad" aria-hidden="true">
   <div class="kp-target">
@@ -604,7 +696,7 @@ var API_SECRET = '';
 
 /* Bump this on every page change — the number shows in the bottom-right corner so you can
    confirm a reload actually picked up the latest page (an old cached page has no tag). */
-var APP_VERSION = 'v58';
+var APP_VERSION = 'v59';
 
 /* Call a backend function: callApi('fn', [arg1, arg2]) -> Promise(result). */
 function callApi(fn, args){
@@ -801,7 +893,186 @@ function metalsMenuClose(){ $('metalsMenu').classList.add('hide'); }
 function metalsMenuPick(which){
   metalsMenuClose();
   if(which==='finished'){ deptGate('metals'); }   // same flow as before: Append / Delete gate, then count
-  else { toast('Metals Supplies — coming soon'); } // to be defined
+  else { openSupplies(); }
+}
+
+/* ================= Metals Supplies (append-only supply counts) ================= */
+var SUP={rows:[], view:[], loaded:false, err:false};
+var supCurrent=null;
+
+function todayISO(){
+  const n=new Date();
+  return n.getFullYear()+'-'+String(n.getMonth()+1).padStart(2,'0')+'-'+String(n.getDate()).padStart(2,'0');
+}
+function supNum(v){ if(v==='' || v==null) return null; const n=Number(v); return isNaN(n)?null:n; }
+function supDateVal(s){ s=String(s||'').trim(); if(!s) return 0; const t=Date.parse(s); return isNaN(t)?0:t; }
+// Item identity across counts = Section + Group + Category + Item (spelled identically each time).
+function supKey(r){ return [norm(r.section),norm(r.group),norm(r.category),norm(r.item)].join(''); }
+
+function openSupplies(){
+  document.documentElement.style.setProperty('--dept','var(--metal)');
+  document.documentElement.style.setProperty('--dept-accent','var(--metal-accent)');
+  document.documentElement.style.setProperty('--dept-soft','var(--metal-soft)');
+  $('landing').style.display='none';
+  $('count').style.display='none';
+  $('supplies').style.display='flex';
+  if(!SUP.loaded) loadSupplies(); else renderSupplies();
+}
+function suppliesHome(){
+  $('supplies').style.display='none';
+  $('landing').style.display='flex';
+}
+function loadSupplies(){
+  $('supList').innerHTML='<div class="sup-empty">Loading supplies…</div>';
+  callApi('suppliesRead',[]).then(function(res){
+    SUP.rows=(res&&res.rows)||[]; SUP.loaded=true; SUP.err=false;
+    fillSupDatalists(); renderSupplies();
+  }).catch(function(err){
+    SUP.err=true; console.warn('supplies load failed',err);
+    $('supList').innerHTML='<div class="sup-empty">Couldn’t load supplies.<br>Make sure the <b>Metals Supplies</b> tab’s workbook is shared with <b>edit</b> access to the service account, then reopen.</div>';
+  });
+}
+// Reduce all rows to the newest count per item identity (+ how many counts exist).
+function supCurrentItems(){
+  const map={}, order=[];
+  SUP.rows.forEach(function(r){
+    const k=supKey(r);
+    if(!map[k]){ map[k]=Object.assign({}, r, {__count:1, __key:k}); order.push(k); return; }
+    const cur=map[k]; cur.__count++;
+    if(supDateVal(r.updated) >= supDateVal(cur.updated)){ map[k]=Object.assign({}, r, {__count:cur.__count, __key:k}); }
+  });
+  return order.map(function(k){ return map[k]; });
+}
+function renderSupplies(){
+  if(!SUP.loaded) return;
+  const items=supCurrentItems();
+  $('supCount').textContent=items.length;
+  const box=$('supList'); SUP.view=[];
+  if(!items.length){ box.innerHTML='<div class="sup-empty">No supplies logged yet.<br>Tap <b>＋ Add item</b> to record the first count.</div>'; return; }
+  const q=norm($('supSearch').value);
+  const shown = q ? items.filter(function(it){
+    return [it.section,it.group,it.category,it.item,it.note].some(function(s){ return norm(s).indexOf(q)!==-1; });
+  }) : items;
+  if(!shown.length){ box.innerHTML='<div class="sup-empty">No items match your filter.</div>'; return; }
+  const secs=[], secMap={};
+  shown.forEach(function(it){
+    const sName=it.section||'(no section)';
+    let sec=secMap[sName]; if(!sec){ sec={name:sName, groups:[], gmap:{}}; secMap[sName]=sec; secs.push(sec); }
+    const gName=it.group||'(no group)';
+    let grp=sec.gmap[gName]; if(!grp){ grp={name:gName, items:[]}; sec.gmap[gName]=grp; sec.groups.push(grp); }
+    grp.items.push(it);
+  });
+  let html='';
+  secs.forEach(function(sec){
+    html+='<div class="sup-section"><h2>'+esc(sec.name)+'</h2><div class="rule"></div>';
+    sec.groups.forEach(function(grp){
+      html+='<div class="sup-group"><h3>'+esc(grp.name)+'</h3>';
+      let lastCat=null;
+      grp.items.forEach(function(it){
+        const cat=it.category||'';
+        if(cat!==lastCat){ if(cat) html+='<div class="sup-cat">'+esc(cat)+'</div>'; lastCat=cat; }
+        const idx=SUP.view.length; SUP.view.push(it);
+        html+=supCardHtml(it, idx);
+      });
+      html+='</div>';
+    });
+    html+='</div>';
+  });
+  box.innerHTML=html;
+}
+function supCardHtml(it, idx){
+  const qty = (it.quantity===''||it.quantity==null) ? 0 : Number(it.quantity);
+  const re  = (it.reorderAt===''||it.reorderAt==null) ? null : Number(it.reorderAt);
+  const low = (re!=null && !isNaN(re) && !isNaN(qty) && qty<=re);
+  const unit= it.unit ? '<small>'+esc(it.unit)+'</small>' : '';
+  const meta= [it.note?esc(it.note):'', 'updated '+esc(it.updated||'—')].filter(Boolean).join(' · ');
+  const qtyTxt = isNaN(qty) ? esc(String(it.quantity)) : qty.toLocaleString();
+  return '<button type="button" class="sup-card'+(low?' low':'')+'" onclick="supCountOpen('+idx+')">'
+    +'<div class="sup-main"><div class="sup-name">'+esc(it.item||'(unnamed)')+'</div>'
+      +'<div class="sup-meta">'+meta+'</div></div>'
+    +'<div class="sup-qty'+(low?' low':'')+'"><div class="n">'+qtyTxt+unit+'</div>'
+      +'<div class="cnt">'+it.__count+' count'+(it.__count===1?'':'s')+'</div>'
+      +(low?'<div class="sup-flag">REORDER</div>':'')
+    +'</div></button>';
+}
+function supCountOpen(i){
+  const it=SUP.view[i]; if(!it) return;
+  supCurrent=it;
+  $('supcTitle').textContent=it.item||'(unnamed)';
+  const path=[it.section,it.group,it.category].filter(Boolean).join(' › ');
+  const last=(it.quantity===''||it.quantity==null)?'—':(isNaN(Number(it.quantity))?String(it.quantity):Number(it.quantity).toLocaleString());
+  $('supcSub').innerHTML=esc(path)+'<br>Last count: <b>'+esc(String(last))+(it.unit?' '+esc(it.unit):'')+'</b> on '+esc(it.updated||'—');
+  const u=$('supcUnit'); u.textContent=it.unit||''; u.style.display=it.unit?'':'none';
+  $('supcQty').value=''; $('supcNote').value='';
+  $('supCountModal').classList.remove('hide');
+  setTimeout(function(){ $('supcQty').focus(); },60);
+}
+function supCountClose(){ $('supCountModal').classList.add('hide'); supCurrent=null; }
+function supCountSave(){
+  if(!supCurrent) return;
+  const qv=supNum($('supcQty').value.trim());
+  if(qv==null){ toast('Enter a number for the count','err'); return; }
+  const it=supCurrent;
+  const entry={
+    section:it.section||'', group:it.group||'', category:it.category||'', item:it.item||'',
+    quantity:qv, unit:it.unit||'', reorderAt:(it.reorderAt===''||it.reorderAt==null)?'':it.reorderAt,
+    note:$('supcNote').value.trim(), updated:todayISO()
+  };
+  const btn=$('supcSave'); if(btn){ btn.disabled=true; btn.textContent='Saving…'; }
+  callApi('suppliesAppend',[entry]).then(function(){
+    SUP.rows.push(entry);
+    if(btn){ btn.disabled=false; btn.textContent='Save count'; }
+    supCountClose(); renderSupplies();
+    toast('Counted '+(it.item||'item')+' · '+qv.toLocaleString()+(it.unit?' '+it.unit:''));
+  }).catch(function(err){
+    if(btn){ btn.disabled=false; btn.textContent='Save count'; }
+    toast('Save failed — try again','err'); console.error(err);
+  });
+}
+function supAddOpen(){
+  ['saSection','saGroup','saCategory','saItem','saQty','saUnit','saReorder','saNote'].forEach(function(id){ $(id).value=''; });
+  fillSupDatalists();
+  $('supAddModal').classList.remove('hide');
+  setTimeout(function(){ $('saSection').focus(); },60);
+}
+function supAddClose(){ $('supAddModal').classList.add('hide'); }
+function supAddSave(){
+  const section=$('saSection').value.trim(), group=$('saGroup').value.trim(), item=$('saItem').value.trim();
+  const qv=supNum($('saQty').value.trim());
+  if(!section){ toast('Section is required','err'); return; }
+  if(!group){ toast('Group is required','err'); return; }
+  if(!item){ toast('Item is required','err'); return; }
+  if(qv==null){ toast('Quantity must be a number','err'); return; }
+  const reVal=supNum($('saReorder').value.trim());
+  const entry={
+    section:section, group:group, category:$('saCategory').value.trim(), item:item,
+    quantity:qv, unit:$('saUnit').value.trim(), reorderAt:(reVal==null?'':reVal),
+    note:$('saNote').value.trim(), updated:todayISO()
+  };
+  const btn=$('saSave'); if(btn){ btn.disabled=true; btn.textContent='Adding…'; }
+  callApi('suppliesAppend',[entry]).then(function(){
+    SUP.rows.push(entry);
+    if(btn){ btn.disabled=false; btn.textContent='Add item'; }
+    supAddClose(); fillSupDatalists(); renderSupplies();
+    toast('Added '+item);
+  }).catch(function(err){
+    if(btn){ btn.disabled=false; btn.textContent='Add item'; }
+    toast('Save failed — try again','err'); console.error(err);
+  });
+}
+function fillSupDatalists(){
+  const secs=new Set(), grps=new Set(), cats=new Set(), units=new Set();
+  SUP.rows.forEach(function(r){
+    if(r.section) secs.add(r.section);
+    if(r.group) grps.add(r.group);
+    if(r.category) cats.add(r.category);
+    if(r.unit) units.add(r.unit);
+  });
+  const opts=function(set){ return Array.from(set).sort().map(function(v){ return '<option value="'+esc(v)+'"></option>'; }).join(''); };
+  $('dlSections').innerHTML=opts(secs);
+  $('dlGroups').innerHTML=opts(grps);
+  $('dlCats').innerHTML=opts(cats);
+  $('dlUnits').innerHTML=opts(units);
 }
 
 /* ---- Append / Delete gate (shown when opening a department) ---- */

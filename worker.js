@@ -50,7 +50,7 @@ export default {
       new Response(JSON.stringify(obj), { status, headers: { ...cors, 'Content-Type': 'application/json' } });
 
     if (request.method === 'OPTIONS') return new Response(null, { status: 204, headers: cors });
-    if (request.method === 'GET') return json({ ok: true, service: 'inventory-count-api', build: 'v9' }, 200);
+    if (request.method === 'GET') return json({ ok: true, service: 'inventory-count-api', build: 'v10' }, 200);
     if (request.method !== 'POST') return json({ ok: false, error: 'Method not allowed' }, 405);
 
     let payload;
@@ -72,7 +72,9 @@ export default {
 // ---------------- dispatcher ----------------
 async function handle(fn, args, env) {
   args = args || [];
-  if (fn === 'getLogs') return getLogs(env);   // reads a SEPARATE, read-only workbook
+  if (fn === 'getLogs') return getLogs(env);   // reads a SEPARATE workbook
+  if (fn === 'suppliesRead') return suppliesRead(env);       // Metals Supplies tab in the Log workbook
+  if (fn === 'suppliesAppend') return suppliesAppend(env, args[0]);
   const sheets = await makeSheets(env);
   switch (fn) {
     case 'getLookups': return getLookups(sheets);
@@ -125,6 +127,49 @@ async function getLogs(env) {
     parseLog(findTab('plastics log')),
   ]);
   return { metals: metals, plastics: plastics };
+}
+
+// ---------------- Metals Supplies (append-only count log) ----------------
+// Lives in the SAME workbook as the logs (LOG_SHEET_ID), in a tab named exactly "Metals Supplies".
+// The count app appends one row per count; a separate dashboard reads it. Because we WRITE here,
+// the service account (GCP_SA_EMAIL) must have EDITOR access to the Log workbook (Viewer is not
+// enough). Identity of an item over time = Section + Group + Category + Item.
+const SUPPLIES_TAB = 'Metals Supplies';
+const SUPPLIES_HEADER = ['Section', 'Group', 'Category', 'Item', 'Quantity', 'Unit', 'Reorder At', 'Note', 'Updated'];
+async function suppliesRead(env) {
+  const sheets = await makeSheets(env, LOG_SHEET_ID);
+  let values;
+  try { values = await sheets.readAll(SUPPLIES_TAB); }
+  catch (e) { if (String((e && e.message) || '').indexOf('Unable to parse range') !== -1) return { rows: [] }; throw e; }
+  if (!values.length) return { rows: [] };
+  const H = values[0].map((h) => String(h).trim().toLowerCase());
+  const at = (n) => H.indexOf(n);
+  const iSec = at('section'), iGrp = at('group'), iCat = at('category'), iItem = at('item'),
+        iQty = at('quantity'), iUnit = at('unit'), iRe = at('reorder at'), iNote = at('note'), iUpd = at('updated');
+  const g = (r, i) => str_(i === -1 ? '' : r[i]);
+  const out = [];
+  for (let n = 1; n < values.length; n++) {
+    const r = values[n] || [];
+    if (str_(r[0]).indexOf('__META__') !== -1) continue;
+    const item = g(r, iItem), sec = g(r, iSec);
+    if (!item && !sec) continue;
+    out.push({
+      section: sec, group: g(r, iGrp), category: g(r, iCat), item: item,
+      quantity: num_(iQty === -1 ? '' : r[iQty]), unit: g(r, iUnit),
+      reorderAt: num_(iRe === -1 ? '' : r[iRe]), note: g(r, iNote), updated: g(r, iUpd),
+    });
+  }
+  return { rows: out };
+}
+async function suppliesAppend(env, e) {
+  e = e || {};
+  const sheets = await makeSheets(env, LOG_SHEET_ID);
+  const row = [
+    str_(e.section), str_(e.group), str_(e.category), str_(e.item),
+    num_(e.quantity), str_(e.unit), num_(e.reorderAt), str_(e.note), str_(e.updated),
+  ];
+  await sheets.appendEnsuring(SUPPLIES_TAB, row, SUPPLIES_HEADER);
+  return true;
 }
 
 // ---------------- value helpers (match the old Apps Script) ----------------

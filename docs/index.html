@@ -240,6 +240,8 @@ body.tk-open .modal-card{margin-top:12px;margin-bottom:12px}
 .ri-main{flex:1;min-width:0}
 .ri-name{font-weight:800;font-size:15px;color:var(--ink);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .ri-sub{font-size:12px;color:var(--ink-soft);margin-top:2px}
+.ri-plt{font-size:16px;font-weight:800;color:var(--ink)}
+.ri-un{font-size:11px;color:var(--ink-soft)}
 .ri-btns{display:flex;gap:6px;flex:0 0 auto}
 .ri-done{font-weight:800;color:var(--dept);font-family:'JetBrains Mono';font-size:14px;flex:0 0 auto}
 .btn.tiny{flex:0 0 auto;height:38px;min-width:52px;padding:0 12px;border-radius:9px;font-size:14px;font-weight:800;
@@ -587,7 +589,7 @@ var API_SECRET = '';
 
 /* Bump this on every page change — the number shows in the bottom-right corner so you can
    confirm a reload actually picked up the latest page (an old cached page has no tag). */
-var APP_VERSION = 'v56';
+var APP_VERSION = 'v57';
 
 /* Call a backend function: callApi('fn', [arg1, arg2]) -> Promise(result). */
 function callApi(fn, args){
@@ -1169,7 +1171,9 @@ function rowItemHtml(r,i,loc,counted){
   const bd=unitsBreakdown(total, per);
   const done=rowIsCounted(counted,r);
   const de=done?rowCountedEntry(counted,r):null;
-  const sub=(r.desc&&r.desc!==r.product?esc(r.desc)+' · ':'')+'last: <b>'+total.toLocaleString()+'</b> units'+(bd?' ('+bd+')':'');
+  const sub=(r.desc&&r.desc!==r.product?esc(r.desc)+' · ':'')
+    +(bd?'<span class="ri-plt">'+bd+'</span> · ':'')
+    +'<span class="ri-un">last: '+total.toLocaleString()+' units</span>';
   return '<div class="rowitem'+(done?' done':'')+'">'
     +'<div class="ri-main"><div class="ri-name">'+esc(r.product||r.desc)+'</div><div class="ri-sub">'+sub+'</div></div>'
     +(done

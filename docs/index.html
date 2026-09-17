@@ -693,7 +693,7 @@ var API_SECRET = '';
 
 /* Bump this on every page change — the number shows in the bottom-right corner so you can
    confirm a reload actually picked up the latest page (an old cached page has no tag). */
-var APP_VERSION = 'v73';
+var APP_VERSION = 'v74';
 
 /* Call a backend function: callApi('fn', [arg1, arg2]) -> Promise(result). */
 function callApi(fn, args){
@@ -1626,8 +1626,32 @@ function rowStep(delta){
 }
 // Session entries already recorded at this location (so we can tick counted products).
 function countedAt(loc){ const key=logLocKey(loc); return activeEntries().filter(function(e){ return logLocKey(e.loc)===key; }); }
-function rowIsCounted(counted, r){ return counted.some(function(e){ return norm(e.code)===norm(r.product) || (r.desc && norm(e.desc)===norm(r.desc)); }); }
-function rowCountedEntry(counted, r){ return counted.find(function(e){ return norm(e.code)===norm(r.product) || (r.desc && norm(e.desc)===norm(r.desc)); }); }
+function rowEntryMatches(e, r){ return norm(e.code)===norm(r.product) || (r.desc && norm(e.desc)===norm(r.desc)); }
+// Pair each recorded entry to at most ONE row, so two rows with the same product code at a location
+// don't both get ticked from a single count. Returns { rowIndex: entry }. Pass 1 prefers the row
+// whose last quantity equals the entry's total (the "Same" case, which disambiguates duplicates);
+// pass 2 matches any remaining entry by code/desc in row order. Skipped ("not here") rows are ignored.
+function rowCountedPairing(rows, counted, loc){
+  const used=counted.map(function(){ return false; });
+  const map={};
+  const active=rows.map(function(r,i){ return !rowSkips[rowSkipKey(loc,i)]; });
+  rows.forEach(function(r,i){
+    if(!active[i]) return;
+    const q=Number(r.qty)||0;
+    for(let j=0;j<counted.length;j++){
+      if(used[j]) continue;
+      if(rowEntryMatches(counted[j],r) && (Number(counted[j].total)||0)===q){ used[j]=true; map[i]=counted[j]; break; }
+    }
+  });
+  rows.forEach(function(r,i){
+    if(!active[i] || map[i]) return;
+    for(let j=0;j<counted.length;j++){
+      if(used[j]) continue;
+      if(rowEntryMatches(counted[j],r)){ used[j]=true; map[i]=counted[j]; break; }
+    }
+  });
+  return map;
+}
 function rowSkipKey(loc,i){ return logLocKey(loc)+'|'+i; }
 // Show the target location on the Prev/Next buttons (e.g. "◀ S-006" / "S-008 ▶").
 function updateRowStepLabels(){
@@ -1651,25 +1675,26 @@ function renderRowPanel(){
   }
   const rows=logForLoc(loc);
   const counted=countedAt(loc);
-  const doneN=rows.filter(function(r){ return rowIsCounted(counted,r); }).length;
+  const pairing=rowCountedPairing(rows, counted, loc);
+  const doneN=Object.keys(pairing).length;
   info.innerHTML='<div class="rowhdr">Last count at <b>'+esc(loc)+'</b> · '+rows.length+' item'+(rows.length===1?'':'s')
     +(rows.length?' · <b>'+doneN+'</b> counted':'')+'</div>';
   let html='';
   rows.forEach(function(r,i){
     if(rowSkips[rowSkipKey(loc,i)]) return;   // marked "not here"
-    html+=rowItemHtml(r,i,loc,counted);
+    html+=rowItemHtml(r,i,loc,pairing);
   });
   if(!rows.length){ html='<div class="rowhint">Nothing was logged at <b>'+esc(loc)+'</b>.</div>'; }
   html+='<button type="button" class="btn ghost rowadd" onclick="rowAddProduct()">+ Add a product here</button>';
   list.innerHTML=html;
 }
-function rowItemHtml(r,i,loc,counted){
+function rowItemHtml(r,i,loc,pairing){
   const it=lookupForProduct(r.product,r.desc);
   const per=it?Number(it.perUnit)||0:0;
   const total=Number(r.qty)||0;
   const bd=unitsBreakdown(total, per);
-  const done=rowIsCounted(counted,r);
-  const de=done?rowCountedEntry(counted,r):null;
+  const de=pairing[i]||null;
+  const done=!!de;
   const sub=(r.desc&&r.desc!==r.product?esc(r.desc)+' · ':'')
     +(bd?'<span class="ri-plt">'+bd+'</span> · ':'')
     +'<span class="ri-un">last: '+total.toLocaleString()+' units</span>';

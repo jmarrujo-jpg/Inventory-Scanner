@@ -671,7 +671,7 @@ var API_SECRET = '';
 
 /* Bump this on every page change — the number shows in the bottom-right corner so you can
    confirm a reload actually picked up the latest page (an old cached page has no tag). */
-var APP_VERSION = 'v64';
+var APP_VERSION = 'v65';
 
 /* Call a backend function: callApi('fn', [arg1, arg2]) -> Promise(result). */
 function callApi(fn, args){
@@ -877,7 +877,7 @@ function metalsMenuPick(which){
    appends them all to the "Metals Supplies" output tab, mapping Section=Section, Group=Location,
    Category=Category, Item=Product. Method drives the math: percent -> lbs = %/100 * Full Weight;
    units -> lbs = units * Full Weight; each -> plain count. */
-var SUP={catalog:[], counts:[], cidx:{}, view:[], byKey:{}, pending:{}, justSaved:{}, section:null, loaded:false, err:false};
+var SUP={catalog:[], counts:[], cidx:{}, view:[], byKey:{}, pending:{}, justSaved:{}, tab:null, loaded:false, err:false};
 
 function todayISO(){
   const n=new Date();
@@ -971,29 +971,43 @@ function supCompute(t, raw){
   }
   return {qty:v, note:'', short:''}; // each
 }
-// Distinct Sections (the tabs), in catalog order, with a friendly label: a Section that is the
-// only one in its Board shows the Board name (minus "Supplies"), e.g. "Printer Supplies" -> "Printer".
-function supSections(){
-  const order=[], meta={}, boardSecs={};
+// Sections that share one tab (you count them in the same spot). Edit here to merge/split tabs.
+var SUP_TAB_GROUPS=[{label:'Copper / Powder', sections:['Copper','Powder']}];
+// Build the tab list: each grouped set becomes one tab; every other Section is its own tab (a
+// Section that is the only one in its Board shows the Board name minus "Supplies", e.g. "Printer").
+function supTabDefs(){
+  const order=[], secBoard={}, boardSecs={};
   SUP.catalog.forEach(function(c){
     const sec=c.section||'(no section)', bd=c.board||'';
-    if(!(sec in meta)){ meta[sec]={section:sec, board:bd}; order.push(sec); }
+    if(!(sec in secBoard)){ secBoard[sec]=bd; order.push(sec); }
     (boardSecs[bd]=boardSecs[bd]||{})[sec]=1;
   });
-  return order.map(function(sec){
-    const bd=meta[sec].board;
-    const sole = bd && Object.keys(boardSecs[bd]).length===1;
-    const label = sole ? bd.replace(/\s*supplies\s*$/i,'').trim() : sec;
-    return {section:sec, board:bd, label:label||sec};
+  const groupOf={};
+  SUP_TAB_GROUPS.forEach(function(g,gi){ (g.sections||[]).forEach(function(s){ groupOf[norm(s)]=gi; }); });
+  const tabs=[], seen={};
+  order.forEach(function(sec){
+    const gi=groupOf[norm(sec)];
+    if(gi!=null){
+      const gid='grp'+gi; if(seen[gid]) return; seen[gid]=1;
+      const secs={}; SUP_TAB_GROUPS[gi].sections.forEach(function(s){ secs[norm(s)]=1; });
+      tabs.push({ id:gid, label:SUP_TAB_GROUPS[gi].label, secs:secs });
+    } else {
+      const bd=secBoard[sec];
+      const sole = bd && Object.keys(boardSecs[bd]).length===1;
+      const label = sole ? bd.replace(/\s*supplies\s*$/i,'').trim() : sec;
+      const secs={}; secs[norm(sec)]=1;
+      tabs.push({ id:'sec:'+sec, label:label||sec, secs:secs });
+    }
   });
+  return tabs;
 }
-function renderSupTabs(sections){
+function renderSupTabs(tabs){
   const bar=$('supTabs'); if(!bar) return;
-  bar.innerHTML=sections.map(function(s){
-    return '<button type="button" class="sup-tab'+(s.section===SUP.section?' on':'')+'" onclick="supTab('+JSON.stringify(s.section).replace(/"/g,'&quot;')+')">'+esc(s.label)+'</button>';
+  bar.innerHTML=tabs.map(function(t){
+    return '<button type="button" class="sup-tab'+(t.id===SUP.tab?' on':'')+'" onclick="supTab('+JSON.stringify(t.id).replace(/"/g,'&quot;')+')">'+esc(t.label)+'</button>';
   }).join('');
 }
-function supTab(section){ SUP.section=section; renderSupplies(); const bar=$('supTabs'); if(bar){ const on=bar.querySelector('.sup-tab.on'); if(on&&on.scrollIntoView) on.scrollIntoView({inline:'center',block:'nearest'}); } }
+function supTab(id){ SUP.tab=id; renderSupplies(); const bar=$('supTabs'); if(bar){ const on=bar.querySelector('.sup-tab.on'); if(on&&on.scrollIntoView) on.scrollIntoView({inline:'center',block:'nearest'}); } }
 function renderSupplies(){
   if(!SUP.loaded) return;
   const targets=supTargets();
@@ -1002,12 +1016,13 @@ function renderSupplies(){
   SUP.view=[];
   const box=$('supList');
   if(!SUP.catalog.length){ $('supTabs').innerHTML=''; $('supCount').textContent='0'; box.innerHTML='<div class="sup-empty">The <b>Metals_Supplies</b> lookup tab is empty or missing.</div>'; updateSaveBar(); return; }
-  const sections=supSections();
-  if(!SUP.section || !sections.some(function(s){ return s.section===SUP.section; })) SUP.section=sections[0].section;
-  renderSupTabs(sections);
+  const tabs=supTabDefs();
+  if(!SUP.tab || !tabs.some(function(t){ return t.id===SUP.tab; })) SUP.tab=tabs[0].id;
+  renderSupTabs(tabs);
+  const curTab=tabs.filter(function(t){ return t.id===SUP.tab; })[0]||tabs[0];
   // targets in the active tab, honoring the filter
   const q=norm($('supSearch').value);
-  const inTab=targets.filter(function(t){ return (t.section||'(no section)')===SUP.section; });
+  const inTab=targets.filter(function(t){ return curTab.secs[norm(t.section||'(no section)')]; });
   const shown = q ? inTab.filter(function(t){ return [t.category,t.product,t.location].some(function(s){ return norm(s).indexOf(q)!==-1; }); }) : inTab;
   $('supCount').textContent=shown.length;
   if(!shown.length){ box.innerHTML='<div class="sup-empty">'+(q?'No items match your filter.':'Nothing to count in this tab.')+'</div>'; updateSaveBar(); return; }

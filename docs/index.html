@@ -249,6 +249,24 @@ body.tk-open .modal-card{margin-top:12px;margin-bottom:12px}
 .sr-calc.done{color:var(--ok)}
 .sr-add{margin-top:3px;font-size:11px;font-weight:800;color:var(--dept);background:var(--dept-soft);border:1px solid var(--line);border-radius:8px;padding:5px 10px}
 .sr-del{flex:0 0 auto;width:24px;height:24px;font-size:17px;font-weight:800;color:var(--danger);background:transparent;line-height:1}
+.sup-grow{background:#fff;border:1px solid var(--line);border-radius:11px;padding:11px 13px;margin-bottom:8px}
+.sup-grow.low{border-color:#E4B4AB;background:#FDF3F1}
+.sup-grow.saved{border-color:var(--ok);background:#F1F8F3}
+.sgr-head{display:flex;justify-content:space-between;align-items:baseline;gap:10px}
+.sgr-name{font-weight:800;font-size:15px;color:var(--ink);min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.sgr-tot{font-size:12px;color:var(--ink-soft);white-space:nowrap;flex:none}
+.sgr-tot b{color:var(--ink)}
+.sgr-line{display:flex;align-items:center;gap:8px;margin-top:8px}
+.sgr-lbl{flex:1;font-size:13px;font-weight:700;color:var(--ink-soft)}
+.sgr-del{flex:0 0 auto;width:26px;height:26px;font-size:17px;font-weight:800;color:var(--danger);background:transparent;line-height:1}
+.sgr-in{width:100px;height:44px;border:1.5px solid var(--line);border-radius:9px;text-align:right;font-family:'JetBrains Mono';font-weight:800;font-size:17px;padding:0 9px;background:#fff;outline:none;color:var(--ink)}
+.sgr-in:focus{border-color:var(--dept);box-shadow:0 0 0 3px var(--dept-soft)}
+.sgr-in.dirty{border-color:var(--dept-accent);box-shadow:0 0 0 3px rgba(232,162,26,.18)}
+.sgr-unit{font-size:12px;font-weight:700;color:var(--ink-soft);width:26px}
+.sgr-foot{display:flex;justify-content:space-between;align-items:center;margin-top:11px}
+.sgr-add{font-size:12px;font-weight:800;color:var(--dept);background:var(--dept-soft);border:1px solid var(--line);border-radius:9px;padding:8px 13px}
+.sgr-calc{font-size:12px;font-weight:800;color:var(--dept)}
+.sgr-calc.done{color:var(--ok)}
 .sup-empty{font-size:14px;color:var(--ink-soft);background:#fff;border:1px solid var(--line);border-radius:11px;padding:16px;text-align:center}
 .sup-savebar{position:fixed;left:0;right:0;bottom:0;z-index:70;display:flex;padding:12px 16px calc(12px + env(safe-area-inset-bottom));
   background:linear-gradient(180deg,rgba(233,234,236,0),var(--paper) 42%)}
@@ -672,7 +690,7 @@ var API_SECRET = '';
 
 /* Bump this on every page change — the number shows in the bottom-right corner so you can
    confirm a reload actually picked up the latest page (an old cached page has no tag). */
-var APP_VERSION = 'v66';
+var APP_VERSION = 'v67';
 
 /* Call a backend function: callApi('fn', [arg1, arg2]) -> Promise(result). */
 function callApi(fn, args){
@@ -940,28 +958,30 @@ function supCountsIndex(){
   });
   return idx;
 }
-// "pallets" method: log one pallet's exact weight; it ADDS to the cage's running total (kept as
-// history), instead of replacing it. Any of these Method spellings turns a row into this mode.
-function supIsAccum(t){ return /^(pallet|pallets|accum|accumulate|weight|weights|running)$/.test(String(t.method||'').toLowerCase().trim()); }
-// The cage's current running total = the newest saved Quantity for this item (0 if none yet).
-function supRunningTotal(t){
+// "pallets" method = the cage gaylord list: several exact pallet weights (Gaylord 1, 2, …) that
+// sum to the cage total, carried over week to week (rebuilt from the last count's note).
+function supIsGaylord(t){ return /^(pallet|pallets|gaylord|gaylords|weight|weights)$/.test(String(t.method||'').toLowerCase().trim()); }
+// Rebuild the carried-over gaylord weights from the newest saved count's note ("4208 + 3836 + …").
+function supCarriedGaylords(t){
   const e=SUP.cidx[supTargetKey(t)];
-  const n = (e&&e.last!=null) ? Number(e.last.quantity) : NaN;
-  return isNaN(n) ? 0 : n;
+  if(!e||!e.last) return [];
+  return String(e.last.note||'').split('+').map(function(s){ return s.trim(); }).filter(function(s){ return s!=='' && supNum(s)!=null; });
 }
-// Method math + human-readable note + short "= X unit" preview.
+// The values to show in a row's inputs: current edits if any, else carry-over (gaylord), else blank.
+function supRowVals(t, key){
+  if(SUP.pending[key]!=null) return supVals(key);
+  if(supIsGaylord(t)){ const g=supCarriedGaylords(t); return g.length?g:['']; }
+  return supVals(key);
+}
+// Read every input currently rendered for a row (handles the multi-line gaylord list).
+function supReadInputs(idx){ const arr=[]; let i=0; while(true){ const el=$('sin_'+idx+'_'+i); if(!el) break; arr.push(el.value.trim()); i++; } return arr; }
+// Method math + human-readable note + short "= X unit" preview (single sub-entry).
 function supCompute(t, raw){
   const v=supNum(raw);
   if(v==null) return null;
   const fw=Number(t.fullWeight);
   const u=t.unit||'lbs';
   const fwTxt=isNaN(fw)?'?':fw.toLocaleString();
-  if(supIsAccum(t)){
-    const prev=supRunningTotal(t);
-    const total=prev+v;
-    const sign=v>=0?'+':'−';
-    return {qty:total, note:sign+Math.abs(v).toLocaleString()+' '+u+(v>=0?' (pallet)':' (adjust)'), short:'total '+total.toLocaleString()+' '+u, accum:true, add:v, prev:prev};
-  }
   if(t.method==='percent'){
     const lbs=Math.round((isNaN(fw)?0:fw)*v/100);
     return {qty:lbs, note:v+'% full', short:lbs.toLocaleString()+' '+u};
@@ -1041,7 +1061,7 @@ function renderSupplies(){
     html+='<div class="sup-loc">📍 '+esc(g.name)+' <span class="cnt">'+prog+'</span></div>';
     g.items.forEach(function(t){
       const idx=SUP.view.length; SUP.view.push(t);
-      html+=supRowHtml(t, idx);
+      html+=(supIsGaylord(t)?supGaylordRowHtml(t, idx):supRowHtml(t, idx));
     });
   });
   box.innerHTML=html;
@@ -1051,15 +1071,21 @@ function renderSupplies(){
 // line). Most rows have one; the compound presses can have several % readings that sum.
 function supVals(key){ const p=SUP.pending[key]; if(Array.isArray(p)) return p.slice(); if(p!=null && p!=='') return [String(p)]; return ['']; }
 // Barrels/positions are now defined explicitly as their own catalog rows, so no dynamic add.
-function supMultiEnabled(t){ return false; }
-// Compute the target total from all its sub-entries (accumulate uses just the first as an add).
+// Sum a target's sub-entries. Gaylord = sum of exact weights (note is the raw breakdown so it can
+// be parsed back next week); percent/units sum their computed lbs.
 function supComputeMulti(t, vals){
-  if(supIsAccum(t)) return supCompute(t, (vals&&vals.length?vals[0]:''));
+  const u=t.unit||'lbs';
+  if(supIsGaylord(t)){
+    const list=(vals||[]).filter(function(r){ return supNum(r)!=null; });
+    if(!list.length) return null;
+    const qty=list.reduce(function(a,r){ return a+supNum(r); },0);
+    const note=list.map(function(r){ return String(supNum(r)); }).join(' + ');
+    return {qty:qty, note:note, short:'total '+qty.toLocaleString()+' '+u+' ('+list.length+' gaylord'+(list.length===1?'':'s')+')', n:list.length};
+  }
   const list=(vals||[]).filter(function(r){ return supNum(r)!=null; });
   if(!list.length) return null;
   const parts=list.map(function(r){ return supCompute(t, r); });
   const qty=parts.reduce(function(a,c){ return a+(Number(c.qty)||0); },0);
-  const u=t.unit||'lbs';
   let note;
   if(t.method==='percent') note=list.map(function(r){ return supNum(r)+'%'; }).join(' + ');
   else if(t.method==='units') note=list.map(function(r){ return supNum(r); }).join(' + ')+' units';
@@ -1067,6 +1093,7 @@ function supComputeMulti(t, vals){
   const short = parts.length>1 ? (qty.toLocaleString()+' '+u+' ('+parts.length+')') : parts[0].short;
   return {qty:qty, note:note, short:short, n:parts.length};
 }
+// Single-input row (percent / units / each).
 function supRowHtml(t, idx){
   const key=supTargetKey(t);
   const e=SUP.cidx[key];
@@ -1075,64 +1102,76 @@ function supRowHtml(t, idx){
   const re=(t.reorderAt===''||t.reorderAt==null)?null:Number(t.reorderAt);
   const low=(re!=null && !isNaN(re) && qtyN!=null && !isNaN(qtyN) && qtyN<=re);
   const saved=!!SUP.justSaved[key];
-  const accum=supIsAccum(t);
-  const multi=supMultiEnabled(t);
   const u=t.unit||'lbs';
   const nameHtml=esc(t.product||'(unnamed)')+(t.category?' <span class="sr-cat">'+esc(t.category)+'</span>':'');
   const bits=[];
-  if(accum){
-    const cnt=e?e.list.length:0;
-    if(last){ bits.push('total <b>'+fmtNum(last.quantity)+' '+esc(u)+'</b> · '+cnt+' pallet'+(cnt===1?'':'s')+(low?' <span class="warn">⚠</span>':'')); }
-    else bits.push('no pallets yet');
-  } else if(last){ bits.push('last <b>'+fmtNum(last.quantity)+(t.unit?' '+esc(t.unit):'')+'</b>'+(low?' <span class="warn">⚠</span>':'')); }
+  if(last){ bits.push('last <b>'+fmtNum(last.quantity)+(t.unit?' '+esc(t.unit):'')+'</b>'+(low?' <span class="warn">⚠</span>':'')); }
   else { bits.push('not counted'); }
   const sub=bits.join(' · ');
-  const suf = accum ? u : (t.method==='percent' ? '%' : (t.method==='units' ? 'units' : (t.unit||'ea')));
-  const ph = accum ? 'pallet' : (t.method==='percent' ? '0–100' : '0');
-  const vals = accum
-    ? [ (Array.isArray(SUP.pending[key])?(SUP.pending[key][0]||''):(SUP.pending[key]!=null?String(SUP.pending[key]):'')) ]
-    : supVals(key);
+  const suf = (t.method==='percent' ? '%' : (t.method==='units' ? 'units' : (t.unit||'ea')));
+  const ph = (t.method==='percent' ? '0–100' : '0');
+  const vals = supRowVals(t, key);
   let inputs='';
   vals.forEach(function(v,i){
     const dirty = v!=null && v!=='';
     inputs+='<div class="sr-inwrap">'
-      +((multi && i>0)?'<button type="button" class="sr-del" onclick="supDelBar('+idx+','+i+')" aria-label="Remove">×</button>':'')
       +'<input class="sr-in'+(dirty?' dirty':'')+'" id="sin_'+idx+'_'+i+'" inputmode="decimal" autocomplete="off" placeholder="'+ph+'" value="'+(v!=null?esc(String(v)):'')+'" oninput="supInput('+idx+','+i+')" onfocus="this.select()">'
       +'<span class="sr-suf">'+esc(suf)+'</span></div>';
   });
-  const addBtn = multi ? '<button type="button" class="sr-add" onclick="supAddBar('+idx+')">＋ add</button>' : '';
   const cval = supComputeMulti(t, vals);
   const calc = saved ? '✓ saved' : (cval&&cval.short ? '= '+cval.short : '');
   return '<div class="sup-row'+(low?' low':'')+(saved?' saved':'')+'">'
     +'<div class="sr-info"><div class="sr-name">'+nameHtml+'</div>'
       +'<div class="sr-sub">'+sub+'</div></div>'
-    +'<div class="sr-entry">'+inputs+addBtn
+    +'<div class="sr-entry">'+inputs
       +'<div class="sr-calc'+(saved?' done':'')+'" id="scal_'+idx+'">'+esc(calc)+'</div>'
     +'</div></div>';
+}
+// Full-width gaylord card: one weight line per gaylord + "Add gaylord".
+function supGaylordRowHtml(t, idx){
+  const key=supTargetKey(t);
+  const e=SUP.cidx[key];
+  const last=e?e.last:null;
+  const qtyN=last?Number(last.quantity):null;
+  const re=(t.reorderAt===''||t.reorderAt==null)?null:Number(t.reorderAt);
+  const low=(re!=null && !isNaN(re) && qtyN!=null && !isNaN(qtyN) && qtyN<=re);
+  const saved=!!SUP.justSaved[key];
+  const u=t.unit||'lbs';
+  const nameHtml=esc(t.product||'(unnamed)')+(t.category?' <span class="sr-cat">'+esc(t.category)+'</span>':'');
+  const vals=supRowVals(t, key);
+  const totTxt = last ? ('total <b>'+fmtNum(last.quantity)+' '+esc(u)+'</b>'+(low?' <span class="warn">⚠</span>':'')) : 'not counted yet';
+  let lines='';
+  vals.forEach(function(v,i){
+    const dirty=v!=null && v!=='';
+    lines+='<div class="sgr-line"><span class="sgr-lbl">Gaylord '+(i+1)+'</span>'
+      +((vals.length>1)?'<button type="button" class="sgr-del" onclick="supDelBar('+idx+','+i+')" aria-label="Remove">×</button>':'')
+      +'<input class="sgr-in'+(dirty?' dirty':'')+'" id="sin_'+idx+'_'+i+'" inputmode="decimal" autocomplete="off" placeholder="weight" value="'+(v!=null?esc(String(v)):'')+'" oninput="supInput('+idx+','+i+')" onfocus="this.select()">'
+      +'<span class="sgr-unit">'+esc(u)+'</span></div>';
+  });
+  const cval=supComputeMulti(t, vals);
+  const calc = saved ? '✓ saved' : (cval&&cval.short ? '= '+cval.short : '');
+  return '<div class="sup-grow'+(low?' low':'')+(saved?' saved':'')+'">'
+    +'<div class="sgr-head"><div class="sgr-name">'+nameHtml+'</div><div class="sgr-tot">'+totTxt+'</div></div>'
+    +lines
+    +'<div class="sgr-foot"><button type="button" class="sgr-add" onclick="supAddBar('+idx+')">＋ Add gaylord</button>'
+      +'<span class="sgr-calc'+(saved?' done':'')+'" id="scal_'+idx+'">'+esc(calc)+'</span></div>'
+    +'</div>';
 }
 function supInput(idx,i){
   const t=SUP.view[idx]; if(!t) return;
   const key=supTargetKey(t);
-  const el=$('sin_'+idx+'_'+i);
-  if(supIsAccum(t)){
-    const raw=el?el.value.trim():'';
-    if(raw==='') delete SUP.pending[key]; else SUP.pending[key]=[raw];
-  } else {
-    const arr=supVals(key);
-    while(arr.length<=i) arr.push('');
-    arr[i]= el?el.value.trim():'';
-    if(arr.some(function(x){ return x!==''; })) SUP.pending[key]=arr; else delete SUP.pending[key];
-  }
+  const arr=supReadInputs(idx);
+  if(arr.some(function(x){ return x!==''; })) SUP.pending[key]=arr; else delete SUP.pending[key];
   if(SUP.justSaved[key]) delete SUP.justSaved[key];
-  if(el) el.classList.toggle('dirty', !!el.value.trim());
+  const el=$('sin_'+idx+'_'+i); if(el) el.classList.toggle('dirty', !!el.value.trim());
   const cal=$('scal_'+idx);
-  if(cal){ const c=supComputeMulti(t, supVals(key)); cal.textContent=(c&&c.short)?('= '+c.short):''; cal.classList.remove('done'); }
+  if(cal){ const c=supComputeMulti(t, arr); cal.textContent=(c&&c.short)?('= '+c.short):''; cal.classList.remove('done'); }
   updateSaveBar();
 }
 function supAddBar(idx){
   const t=SUP.view[idx]; if(!t) return;
   const key=supTargetKey(t);
-  const arr=supVals(key); arr.push('');
+  const arr=supReadInputs(idx); arr.push('');
   SUP.pending[key]=arr;
   renderSupplies();
   const el=$('sin_'+idx+'_'+(arr.length-1)); if(el) el.focus();
@@ -1140,7 +1179,7 @@ function supAddBar(idx){
 function supDelBar(idx,i){
   const t=SUP.view[idx]; if(!t) return;
   const key=supTargetKey(t);
-  const arr=supVals(key); arr.splice(i,1);
+  const arr=supReadInputs(idx); arr.splice(i,1);
   if(arr.some(function(x){ return x!==''; })) SUP.pending[key]=arr; else delete SUP.pending[key];
   renderSupplies();
 }

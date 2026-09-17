@@ -270,7 +270,6 @@ body.tk-open .modal-card{margin-top:12px;margin-bottom:12px}
 .sgr-chk{width:22px;height:22px;flex:0 0 auto;accent-color:var(--dept);margin:0}
 .sgr-line.off{opacity:.55}
 .sgr-line.off .sgr-in{text-decoration:line-through}
-.sr-samelink{cursor:pointer;text-decoration:underline;text-decoration-style:dotted;text-underline-offset:2px}
 .sup-empty{font-size:14px;color:var(--ink-soft);background:#fff;border:1px solid var(--line);border-radius:11px;padding:16px;text-align:center}
 .sup-savebar{position:fixed;left:0;right:0;bottom:0;z-index:70;display:flex;padding:12px 16px calc(12px + env(safe-area-inset-bottom));
   background:linear-gradient(180deg,rgba(233,234,236,0),var(--paper) 42%)}
@@ -694,7 +693,7 @@ var API_SECRET = '';
 
 /* Bump this on every page change — the number shows in the bottom-right corner so you can
    confirm a reload actually picked up the latest page (an old cached page has no tag). */
-var APP_VERSION = 'v68';
+var APP_VERSION = 'v69';
 
 /* Call a backend function: callApi('fn', [arg1, arg2]) -> Promise(result). */
 function callApi(fn, args){
@@ -1116,8 +1115,13 @@ function supRowHtml(t, idx){
   const u=t.unit||'lbs';
   const nameHtml=esc(t.product||'(unnamed)')+(t.category?' <span class="sr-cat">'+esc(t.category)+'</span>':'');
   const bits=[];
-  if(last){ bits.push('<span class="sr-samelink" onclick="supSame('+idx+')">last <b>'+fmtNum(last.quantity)+(t.unit?' '+esc(t.unit):'')+'</b> ↩</span>'+(low?' <span class="warn">⚠</span>':'')); }
-  else { bits.push('not counted'); }
+  if(last){
+    const w=fmtNum(last.quantity)+(t.unit?' '+esc(t.unit):'');
+    const note=String(last.note||'').trim();
+    // Show the last reading (e.g. "30% full" or "55% + 55%") plus the weight it worked out to.
+    if(note && t.method!=='each') bits.push('last <b>'+esc(note)+'</b> · '+w+(low?' <span class="warn">⚠</span>':''));
+    else bits.push('last <b>'+w+'</b>'+(low?' <span class="warn">⚠</span>':''));
+  } else { bits.push('not counted'); }
   const sub=bits.join(' · ');
   const suf = (t.method==='percent' ? '%' : (t.method==='units' ? 'units' : (t.unit||'ea')));
   const ph = (t.method==='percent' ? '0–100' : '0');
@@ -1137,20 +1141,6 @@ function supRowHtml(t, idx){
     +'<div class="sr-entry">'+inputs
       +'<div class="sr-calc'+(saved?' done':'')+'" id="scal_'+idx+'">'+esc(calc)+'</div>'
     +'</div></div>';
-}
-// Reverse-compute last count's reading (%, units, or each) so "same as last" can pre-fill it.
-function supLastReading(t){
-  const e=SUP.cidx[supTargetKey(t)]; if(!e||!e.last) return null;
-  const q=Number(e.last.quantity); if(isNaN(q)) return null;
-  const fw=Number(t.fullWeight);
-  if(t.method==='percent') return (isNaN(fw)||fw===0)?null:Math.round(q/fw*100);
-  if(t.method==='units') return (isNaN(fw)||fw===0)?null:Math.round(q/fw);
-  return q; // each
-}
-function supSame(idx){
-  const t=SUP.view[idx]; if(!t) return;
-  const r=supLastReading(t); if(r==null) return;
-  const el=$('sin_'+idx+'_0'); if(el){ el.value=String(r); el.focus(); supInput(idx,0); }
 }
 // The gaylord list to show: current edits if any, else last count's gaylords (all present), else one blank.
 function supGayState(t, key){

@@ -267,6 +267,10 @@ body.tk-open .modal-card{margin-top:12px;margin-bottom:12px}
 .sgr-add{font-size:12px;font-weight:800;color:var(--dept);background:var(--dept-soft);border:1px solid var(--line);border-radius:9px;padding:8px 13px}
 .sgr-calc{font-size:12px;font-weight:800;color:var(--dept)}
 .sgr-calc.done{color:var(--ok)}
+.sgr-chk{width:22px;height:22px;flex:0 0 auto;accent-color:var(--dept);margin:0}
+.sgr-line.off{opacity:.55}
+.sgr-line.off .sgr-in{text-decoration:line-through}
+.sr-samelink{cursor:pointer;text-decoration:underline;text-decoration-style:dotted;text-underline-offset:2px}
 .sup-empty{font-size:14px;color:var(--ink-soft);background:#fff;border:1px solid var(--line);border-radius:11px;padding:16px;text-align:center}
 .sup-savebar{position:fixed;left:0;right:0;bottom:0;z-index:70;display:flex;padding:12px 16px calc(12px + env(safe-area-inset-bottom));
   background:linear-gradient(180deg,rgba(233,234,236,0),var(--paper) 42%)}
@@ -690,7 +694,7 @@ var API_SECRET = '';
 
 /* Bump this on every page change — the number shows in the bottom-right corner so you can
    confirm a reload actually picked up the latest page (an old cached page has no tag). */
-var APP_VERSION = 'v67';
+var APP_VERSION = 'v68';
 
 /* Call a backend function: callApi('fn', [arg1, arg2]) -> Promise(result). */
 function callApi(fn, args){
@@ -1073,14 +1077,21 @@ function supVals(key){ const p=SUP.pending[key]; if(Array.isArray(p)) return p.s
 // Barrels/positions are now defined explicitly as their own catalog rows, so no dynamic add.
 // Sum a target's sub-entries. Gaylord = sum of exact weights (note is the raw breakdown so it can
 // be parsed back next week); percent/units sum their computed lbs.
+// Normalize a gaylord list to [{w, on}] (accepts plain weight strings = present).
+function supGayList(vals){
+  return (vals||[]).map(function(x){
+    if(x && typeof x==='object') return {w:String(x.w==null?'':x.w).trim(), on:x.on!==false};
+    return {w:String(x==null?'':x).trim(), on:true};
+  });
+}
 function supComputeMulti(t, vals){
   const u=t.unit||'lbs';
   if(supIsGaylord(t)){
-    const list=(vals||[]).filter(function(r){ return supNum(r)!=null; });
-    if(!list.length) return null;
-    const qty=list.reduce(function(a,r){ return a+supNum(r); },0);
-    const note=list.map(function(r){ return String(supNum(r)); }).join(' + ');
-    return {qty:qty, note:note, short:'total '+qty.toLocaleString()+' '+u+' ('+list.length+' gaylord'+(list.length===1?'':'s')+')', n:list.length};
+    const on=supGayList(vals).filter(function(g){ return g.on && supNum(g.w)!=null; });
+    if(!on.length) return null;
+    const qty=on.reduce(function(a,g){ return a+supNum(g.w); },0);
+    const note=on.map(function(g){ return String(supNum(g.w)); }).join(' + ');
+    return {qty:qty, note:note, short:'total '+qty.toLocaleString()+' '+u+' ('+on.length+' gaylord'+(on.length===1?'':'s')+')', n:on.length};
   }
   const list=(vals||[]).filter(function(r){ return supNum(r)!=null; });
   if(!list.length) return null;
@@ -1105,7 +1116,7 @@ function supRowHtml(t, idx){
   const u=t.unit||'lbs';
   const nameHtml=esc(t.product||'(unnamed)')+(t.category?' <span class="sr-cat">'+esc(t.category)+'</span>':'');
   const bits=[];
-  if(last){ bits.push('last <b>'+fmtNum(last.quantity)+(t.unit?' '+esc(t.unit):'')+'</b>'+(low?' <span class="warn">⚠</span>':'')); }
+  if(last){ bits.push('<span class="sr-samelink" onclick="supSame('+idx+')">last <b>'+fmtNum(last.quantity)+(t.unit?' '+esc(t.unit):'')+'</b> ↩</span>'+(low?' <span class="warn">⚠</span>':'')); }
   else { bits.push('not counted'); }
   const sub=bits.join(' · ');
   const suf = (t.method==='percent' ? '%' : (t.method==='units' ? 'units' : (t.unit||'ea')));
@@ -1127,36 +1138,64 @@ function supRowHtml(t, idx){
       +'<div class="sr-calc'+(saved?' done':'')+'" id="scal_'+idx+'">'+esc(calc)+'</div>'
     +'</div></div>';
 }
-// Full-width gaylord card: one weight line per gaylord + "Add gaylord".
+// Reverse-compute last count's reading (%, units, or each) so "same as last" can pre-fill it.
+function supLastReading(t){
+  const e=SUP.cidx[supTargetKey(t)]; if(!e||!e.last) return null;
+  const q=Number(e.last.quantity); if(isNaN(q)) return null;
+  const fw=Number(t.fullWeight);
+  if(t.method==='percent') return (isNaN(fw)||fw===0)?null:Math.round(q/fw*100);
+  if(t.method==='units') return (isNaN(fw)||fw===0)?null:Math.round(q/fw);
+  return q; // each
+}
+function supSame(idx){
+  const t=SUP.view[idx]; if(!t) return;
+  const r=supLastReading(t); if(r==null) return;
+  const el=$('sin_'+idx+'_0'); if(el){ el.value=String(r); el.focus(); supInput(idx,0); }
+}
+// The gaylord list to show: current edits if any, else last count's gaylords (all present), else one blank.
+function supGayState(t, key){
+  if(Array.isArray(SUP.pending[key])) return supGayList(SUP.pending[key]);
+  const g=supCarriedGaylords(t);
+  if(g.length) return g.map(function(w){ return {w:w, on:true}; });
+  return [{w:'', on:true}];
+}
+// Read the gaylord lines (weight + checkbox) straight from the DOM.
+function supGayReadDOM(idx){
+  const arr=[]; let i=0;
+  while(true){ const w=$('sin_'+idx+'_'+i); if(!w) break; const chk=$('sgc_'+idx+'_'+i); arr.push({w:w.value.trim(), on:chk?chk.checked:true}); i++; }
+  return arr;
+}
+// Full-width gaylord card: checkbox (still here) + weight per gaylord, plus "Add gaylord".
 function supGaylordRowHtml(t, idx){
   const key=supTargetKey(t);
   const e=SUP.cidx[key];
   const last=e?e.last:null;
-  const qtyN=last?Number(last.quantity):null;
-  const re=(t.reorderAt===''||t.reorderAt==null)?null:Number(t.reorderAt);
-  const low=(re!=null && !isNaN(re) && qtyN!=null && !isNaN(qtyN) && qtyN<=re);
   const saved=!!SUP.justSaved[key];
   const u=t.unit||'lbs';
   const nameHtml=esc(t.product||'(unnamed)')+(t.category?' <span class="sr-cat">'+esc(t.category)+'</span>':'');
-  const vals=supRowVals(t, key);
-  const totTxt = last ? ('total <b>'+fmtNum(last.quantity)+' '+esc(u)+'</b>'+(low?' <span class="warn">⚠</span>':'')) : 'not counted yet';
+  const state=supGayState(t, key);
+  const headTxt = last ? ('last <b>'+fmtNum(last.quantity)+' '+esc(u)+'</b> · '+state.length+' gaylord'+(state.length===1?'':'s')) : 'not counted yet';
   let lines='';
-  vals.forEach(function(v,i){
-    const dirty=v!=null && v!=='';
-    lines+='<div class="sgr-line"><span class="sgr-lbl">Gaylord '+(i+1)+'</span>'
-      +((vals.length>1)?'<button type="button" class="sgr-del" onclick="supDelBar('+idx+','+i+')" aria-label="Remove">×</button>':'')
-      +'<input class="sgr-in'+(dirty?' dirty':'')+'" id="sin_'+idx+'_'+i+'" inputmode="decimal" autocomplete="off" placeholder="weight" value="'+(v!=null?esc(String(v)):'')+'" oninput="supInput('+idx+','+i+')" onfocus="this.select()">'
-      +'<span class="sgr-unit">'+esc(u)+'</span></div>';
+  state.forEach(function(g,i){
+    const dirty=g.w!=='';
+    lines+='<div class="sgr-line'+(g.on?'':' off')+'" id="sgl_'+idx+'_'+i+'">'
+      +'<input type="checkbox" class="sgr-chk" id="sgc_'+idx+'_'+i+'"'+(g.on?' checked':'')+' onchange="supGayToggle('+idx+','+i+')" aria-label="Still in cage">'
+      +'<span class="sgr-lbl">Gaylord '+(i+1)+'</span>'
+      +'<input class="sgr-in'+(dirty?' dirty':'')+'" id="sin_'+idx+'_'+i+'" inputmode="decimal" autocomplete="off" placeholder="weight" value="'+esc(g.w)+'" oninput="supGayInput('+idx+','+i+')" onfocus="this.select()">'
+      +'<span class="sgr-unit">'+esc(u)+'</span>'
+      +'<button type="button" class="sgr-del" onclick="supGayDel('+idx+','+i+')" aria-label="Remove">×</button>'
+    +'</div>';
   });
-  const cval=supComputeMulti(t, vals);
-  const calc = saved ? '✓ saved' : (cval&&cval.short ? '= '+cval.short : '');
-  return '<div class="sup-grow'+(low?' low':'')+(saved?' saved':'')+'">'
-    +'<div class="sgr-head"><div class="sgr-name">'+nameHtml+'</div><div class="sgr-tot">'+totTxt+'</div></div>'
+  const cval=supComputeMulti(t, state);
+  const calc = saved ? '✓ saved' : (cval&&cval.short ? '= '+cval.short : '= total 0 '+u);
+  return '<div class="sup-grow'+(saved?' saved':'')+'">'
+    +'<div class="sgr-head"><div class="sgr-name">'+nameHtml+'</div><div class="sgr-tot">'+headTxt+'</div></div>'
     +lines
-    +'<div class="sgr-foot"><button type="button" class="sgr-add" onclick="supAddBar('+idx+')">＋ Add gaylord</button>'
+    +'<div class="sgr-foot"><button type="button" class="sgr-add" onclick="supGayAdd('+idx+')">＋ Add gaylord</button>'
       +'<span class="sgr-calc'+(saved?' done':'')+'" id="scal_'+idx+'">'+esc(calc)+'</span></div>'
     +'</div>';
 }
+// Single-input row handler (percent / units / each).
 function supInput(idx,i){
   const t=SUP.view[idx]; if(!t) return;
   const key=supTargetKey(t);
@@ -1168,19 +1207,33 @@ function supInput(idx,i){
   if(cal){ const c=supComputeMulti(t, arr); cal.textContent=(c&&c.short)?('= '+c.short):''; cal.classList.remove('done'); }
   updateSaveBar();
 }
-function supAddBar(idx){
+// Gaylord handlers: sync DOM (weights + checkboxes) into pending and refresh the total.
+function supGaySync(idx){
   const t=SUP.view[idx]; if(!t) return;
   const key=supTargetKey(t);
-  const arr=supReadInputs(idx); arr.push('');
+  const arr=supGayReadDOM(idx);
+  if(arr.some(function(g){ return g.w!==''; })) SUP.pending[key]=arr; else delete SUP.pending[key];
+  if(SUP.justSaved[key]) delete SUP.justSaved[key];
+  arr.forEach(function(g,j){ const el=$('sin_'+idx+'_'+j); if(el) el.classList.toggle('dirty', g.w!==''); const ln=$('sgl_'+idx+'_'+j); if(ln) ln.classList.toggle('off', !g.on); });
+  const cal=$('scal_'+idx);
+  if(cal){ const c=supComputeMulti(t, arr); cal.textContent=(c&&c.short)?('= '+c.short):('= total 0 '+(t.unit||'lbs')); cal.classList.remove('done'); }
+  updateSaveBar();
+}
+function supGayInput(idx,i){ supGaySync(idx); }
+function supGayToggle(idx,i){ supGaySync(idx); }
+function supGayAdd(idx){
+  const t=SUP.view[idx]; if(!t) return;
+  const key=supTargetKey(t);
+  const arr=supGayReadDOM(idx); arr.push({w:'', on:true});
   SUP.pending[key]=arr;
   renderSupplies();
   const el=$('sin_'+idx+'_'+(arr.length-1)); if(el) el.focus();
 }
-function supDelBar(idx,i){
+function supGayDel(idx,i){
   const t=SUP.view[idx]; if(!t) return;
   const key=supTargetKey(t);
-  const arr=supReadInputs(idx); arr.splice(i,1);
-  if(arr.some(function(x){ return x!==''; })) SUP.pending[key]=arr; else delete SUP.pending[key];
+  const arr=supGayReadDOM(idx); arr.splice(i,1);
+  if(arr.some(function(g){ return g.w!==''; })) SUP.pending[key]=arr; else delete SUP.pending[key];
   renderSupplies();
 }
 function supPendingCount(){ let n=0; for(const k in SUP.pending){ const t=SUP.byKey[k]; if(t && supComputeMulti(t, supVals(k))!=null) n++; } return n; }

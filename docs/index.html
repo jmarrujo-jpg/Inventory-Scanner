@@ -235,6 +235,7 @@ body.tk-open .modal-card{margin-top:12px;margin-bottom:12px}
 .sup-row.saved{border-color:var(--ok);background:#F1F8F3}
 .sr-info{flex:1;min-width:0}
 .sr-name{font-weight:800;font-size:15px;color:var(--ink);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.sr-name .sr-cat{font-weight:700;font-size:12px;color:var(--dept);background:var(--dept-soft);border-radius:6px;padding:1px 6px;margin-left:6px}
 .sr-sub{font-size:11.5px;color:var(--ink-soft);margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .sr-sub b{color:var(--ink)}
 .sr-sub .warn{color:var(--danger);font-weight:800}
@@ -671,7 +672,7 @@ var API_SECRET = '';
 
 /* Bump this on every page change — the number shows in the bottom-right corner so you can
    confirm a reload actually picked up the latest page (an old cached page has no tag). */
-var APP_VERSION = 'v65';
+var APP_VERSION = 'v66';
 
 /* Call a backend function: callApi('fn', [arg1, arg2]) -> Promise(result). */
 function callApi(fn, args){
@@ -1049,8 +1050,8 @@ function renderSupplies(){
 // Pending values are stored per target key as an array of sub-entries ("barrels"/pallets on a
 // line). Most rows have one; the compound presses can have several % readings that sum.
 function supVals(key){ const p=SUP.pending[key]; if(Array.isArray(p)) return p.slice(); if(p!=null && p!=='') return [String(p)]; return ['']; }
-// percent/units rows can hold several summed sub-entries; accumulate & each stay single.
-function supMultiEnabled(t){ return !supIsAccum(t) && (t.method==='percent' || t.method==='units'); }
+// Barrels/positions are now defined explicitly as their own catalog rows, so no dynamic add.
+function supMultiEnabled(t){ return false; }
 // Compute the target total from all its sub-entries (accumulate uses just the first as an add).
 function supComputeMulti(t, vals){
   if(supIsAccum(t)) return supCompute(t, (vals&&vals.length?vals[0]:''));
@@ -1077,8 +1078,8 @@ function supRowHtml(t, idx){
   const accum=supIsAccum(t);
   const multi=supMultiEnabled(t);
   const u=t.unit||'lbs';
+  const nameHtml=esc(t.product||'(unnamed)')+(t.category?' <span class="sr-cat">'+esc(t.category)+'</span>':'');
   const bits=[];
-  if(t.category) bits.push(esc(t.category));
   if(accum){
     const cnt=e?e.list.length:0;
     if(last){ bits.push('total <b>'+fmtNum(last.quantity)+' '+esc(u)+'</b> · '+cnt+' pallet'+(cnt===1?'':'s')+(low?' <span class="warn">⚠</span>':'')); }
@@ -1103,7 +1104,7 @@ function supRowHtml(t, idx){
   const cval = supComputeMulti(t, vals);
   const calc = saved ? '✓ saved' : (cval&&cval.short ? '= '+cval.short : '');
   return '<div class="sup-row'+(low?' low':'')+(saved?' saved':'')+'">'
-    +'<div class="sr-info"><div class="sr-name">'+esc(t.product||'(unnamed)')+'</div>'
+    +'<div class="sr-info"><div class="sr-name">'+nameHtml+'</div>'
       +'<div class="sr-sub">'+sub+'</div></div>'
     +'<div class="sr-entry">'+inputs+addBtn
       +'<div class="sr-calc'+(saved?' done':'')+'" id="scal_'+idx+'">'+esc(calc)+'</div>'

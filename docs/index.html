@@ -693,7 +693,7 @@ var API_SECRET = '';
 
 /* Bump this on every page change — the number shows in the bottom-right corner so you can
    confirm a reload actually picked up the latest page (an old cached page has no tag). */
-var APP_VERSION = 'v72';
+var APP_VERSION = 'v73';
 
 /* Call a backend function: callApi('fn', [arg1, arg2]) -> Promise(result). */
 function callApi(fn, args){
@@ -950,19 +950,28 @@ function supReorderMap(){
   return m;
 }
 // Expand every catalog row into one count target per listed Location.
+// Each target gets two keys: outKey = the output identity (Section+Location+Category+Product) used
+// only to look up its last recorded count; rowKey = a UNIQUE per-row handle (adds Method + an
+// occurrence counter) used for this session's entry/"saved" state. Two catalog rows that share the
+// same location + product code no longer share an input box or get marked counted together.
 function supTargets(){
   const reMap=supReorderMap();
-  const out=[];
+  const out=[]; const occ={};
   SUP.catalog.forEach(function(c){
     const mk=norm(c.section)+''+norm(c.product);
     const own=(c.reorderAt===''||c.reorderAt==null)?'':c.reorderAt;
     const reEff=(own!=='')?own:(reMap[mk]!=null?reMap[mk]:'');
     const locs=String(c.locations||'').split(',').map(function(s){ return s.trim(); }).filter(Boolean);
     (locs.length?locs:['']).forEach(function(loc){
-      out.push({
+      const t={
         board:c.board||'', section:c.section||'', category:c.category||'', product:c.product||'',
         method:c.method||'', fullWeight:c.fullWeight, unit:c.unit||'', location:loc, reorderAt:reEff
-      });
+      };
+      t.outKey=supTargetKey(t);
+      const base=t.outKey+''+norm(t.method);
+      const n=(occ[base]=(occ[base]||0)+1);
+      t.rowKey=base+''+n;
+      out.push(t);
     });
   });
   return out;
@@ -983,7 +992,7 @@ function supCountsIndex(){
 function supIsGaylord(t){ return /^(pallet|pallets|gaylord|gaylords|weight|weights)$/.test(String(t.method||'').toLowerCase().trim()); }
 // Rebuild the carried-over gaylord weights from the newest saved count's note ("4208 + 3836 + …").
 function supCarriedGaylords(t){
-  const e=SUP.cidx[supTargetKey(t)];
+  const e=SUP.cidx[t.outKey];
   if(!e||!e.last) return [];
   return String(e.last.note||'').split('+').map(function(s){ return s.trim(); }).filter(function(s){ return s!=='' && supNum(s)!=null; });
 }
@@ -1053,7 +1062,7 @@ function renderSupplies(){
   if(!SUP.loaded) return;
   const targets=supTargets();
   SUP.cidx=supCountsIndex();
-  SUP.byKey={}; targets.forEach(function(t){ SUP.byKey[supTargetKey(t)]=t; });
+  SUP.byKey={}; targets.forEach(function(t){ SUP.byKey[t.rowKey]=t; });
   SUP.view=[];
   const box=$('supList');
   if(!SUP.catalog.length){ $('supTabs').innerHTML=''; $('supCount').textContent='0'; box.innerHTML='<div class="sup-empty">The <b>Metals_Supplies</b> lookup tab is empty or missing.</div>'; updateSaveBar(); return; }
@@ -1076,7 +1085,7 @@ function renderSupplies(){
   });
   let html='';
   locs.forEach(function(g){
-    let done=0; g.items.forEach(function(t){ if(SUP.cidx[supTargetKey(t)]) done++; });
+    let done=0; g.items.forEach(function(t){ if(SUP.cidx[t.outKey]) done++; });
     const prog = done>0 ? (done+'/'+g.items.length+' counted') : (g.items.length+' item'+(g.items.length===1?'':'s'));
     html+='<div class="sup-loc">📍 '+esc(g.name)+' <span class="cnt">'+prog+'</span></div>';
     g.items.forEach(function(t){
@@ -1122,8 +1131,8 @@ function supComputeMulti(t, vals){
 }
 // Single-input row (percent / units / each).
 function supRowHtml(t, idx){
-  const key=supTargetKey(t);
-  const e=SUP.cidx[key];
+  const key=t.rowKey;
+  const e=SUP.cidx[t.outKey];
   const last=e?e.last:null;
   const saved=!!SUP.justSaved[key];
   const u=t.unit||'lbs';
@@ -1171,8 +1180,8 @@ function supGayReadDOM(idx){
 }
 // Full-width gaylord card: checkbox (still here) + weight per gaylord, plus "Add gaylord".
 function supGaylordRowHtml(t, idx){
-  const key=supTargetKey(t);
-  const e=SUP.cidx[key];
+  const key=t.rowKey;
+  const e=SUP.cidx[t.outKey];
   const last=e?e.last:null;
   const saved=!!SUP.justSaved[key];
   const u=t.unit||'lbs';
@@ -1202,7 +1211,7 @@ function supGaylordRowHtml(t, idx){
 // Single-input row handler (percent / units / each).
 function supInput(idx,i){
   const t=SUP.view[idx]; if(!t) return;
-  const key=supTargetKey(t);
+  const key=t.rowKey;
   const arr=supReadInputs(idx);
   if(arr.some(function(x){ return x!==''; })) SUP.pending[key]=arr; else delete SUP.pending[key];
   if(SUP.justSaved[key]) delete SUP.justSaved[key];
@@ -1214,7 +1223,7 @@ function supInput(idx,i){
 // Gaylord handlers: sync DOM (weights + checkboxes) into pending and refresh the total.
 function supGaySync(idx){
   const t=SUP.view[idx]; if(!t) return;
-  const key=supTargetKey(t);
+  const key=t.rowKey;
   const arr=supGayReadDOM(idx);
   if(arr.some(function(g){ return g.w!==''; })) SUP.pending[key]=arr; else delete SUP.pending[key];
   if(SUP.justSaved[key]) delete SUP.justSaved[key];
@@ -1227,7 +1236,7 @@ function supGayInput(idx,i){ supGaySync(idx); }
 function supGayToggle(idx,i){ supGaySync(idx); }
 function supGayAdd(idx){
   const t=SUP.view[idx]; if(!t) return;
-  const key=supTargetKey(t);
+  const key=t.rowKey;
   const arr=supGayReadDOM(idx); arr.push({w:'', on:true});
   SUP.pending[key]=arr;
   renderSupplies();
@@ -1235,7 +1244,7 @@ function supGayAdd(idx){
 }
 function supGayDel(idx,i){
   const t=SUP.view[idx]; if(!t) return;
-  const key=supTargetKey(t);
+  const key=t.rowKey;
   const arr=supGayReadDOM(idx); arr.splice(i,1);
   if(arr.some(function(g){ return g.w!==''; })) SUP.pending[key]=arr; else delete SUP.pending[key];
   renderSupplies();

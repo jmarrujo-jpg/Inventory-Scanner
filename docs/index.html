@@ -271,6 +271,8 @@ body.tk-open .modal-card{margin-top:12px;margin-bottom:12px}
 .sgr-line.off{opacity:.55}
 .sgr-line.off .sgr-in{text-decoration:line-through}
 .sup-empty{font-size:14px;color:var(--ink-soft);background:#fff;border:1px solid var(--line);border-radius:11px;padding:16px;text-align:center}
+.sup-alerts{display:flex;flex-direction:column;gap:6px;margin:0 0 12px}
+.sup-alert{font-size:12.5px;font-weight:700;color:var(--danger);background:#FDF3F1;border:1px solid #E4B4AB;border-radius:9px;padding:9px 11px}
 .sup-savebar{position:fixed;left:0;right:0;bottom:0;z-index:70;display:flex;padding:12px 16px calc(12px + env(safe-area-inset-bottom));
   background:linear-gradient(180deg,rgba(233,234,236,0),var(--paper) 42%)}
 .sup-savebar.hide{display:none}
@@ -693,7 +695,7 @@ var API_SECRET = '';
 
 /* Bump this on every page change — the number shows in the bottom-right corner so you can
    confirm a reload actually picked up the latest page (an old cached page has no tag). */
-var APP_VERSION = 'v69';
+var APP_VERSION = 'v70';
 
 /* Call a backend function: callApi('fn', [arg1, arg2]) -> Promise(result). */
 function callApi(fn, args){
@@ -1032,11 +1034,30 @@ function renderSupTabs(tabs){
   }).join('');
 }
 function supTab(id){ SUP.tab=id; renderSupplies(); const bar=$('supTabs'); if(bar){ const on=bar.querySelector('.sup-tab.on'); if(on&&on.scrollIntoView) on.scrollIntoView({inline:'center',block:'nearest'}); } }
+// Sum the newest weight per product (Section + Item) across all its locations, with the product's
+// reorder threshold (the largest Reorder At among its rows). Reorder is judged on this total.
+function supProdKey(t){ return norm(t.section)+''+norm(t.product); }
+function supProductTotals(){
+  const map={};
+  supTargets().forEach(function(t){
+    const pk=supProdKey(t);
+    const m = map[pk] || (map[pk]={section:t.section||'', product:t.product||'', unit:t.unit||'', total:0, reorder:null, counted:false});
+    const e=SUP.cidx[supTargetKey(t)];
+    const qn = (e&&e.last!=null) ? Number(e.last.quantity) : NaN;
+    if(!isNaN(qn)){ m.total+=qn; m.counted=true; }
+    const re=(t.reorderAt===''||t.reorderAt==null)?null:Number(t.reorderAt);
+    if(re!=null && !isNaN(re) && (m.reorder==null || re>m.reorder)) m.reorder=re;
+    if(!m.unit && t.unit) m.unit=t.unit;
+  });
+  return map;
+}
+function supProdLow(t){ const p=SUP.prod && SUP.prod[supProdKey(t)]; return !!(p && p.reorder!=null && p.counted && p.total<=p.reorder); }
 function renderSupplies(){
   if(!SUP.loaded) return;
   const targets=supTargets();
   SUP.cidx=supCountsIndex();
   SUP.byKey={}; targets.forEach(function(t){ SUP.byKey[supTargetKey(t)]=t; });
+  SUP.prod=supProductTotals();
   SUP.view=[];
   const box=$('supList');
   if(!SUP.catalog.length){ $('supTabs').innerHTML=''; $('supCount').textContent='0'; box.innerHTML='<div class="sup-empty">The <b>Metals_Supplies</b> lookup tab is empty or missing.</div>'; updateSaveBar(); return; }
@@ -1057,7 +1078,12 @@ function renderSupplies(){
     let g=lMap[name]; if(!g){ g={name:name, items:[]}; lMap[name]=g; locs.push(g); }
     g.items.push(t);
   });
-  let html='';
+  // low-stock banner: products in this tab whose SUMMED weight is at/under their reorder threshold
+  const lowList=[];
+  for(const pk in SUP.prod){ const p=SUP.prod[pk]; if(p.reorder!=null && p.counted && p.total<=p.reorder && curTab.secs[norm(p.section)]) lowList.push(p); }
+  let html = lowList.length
+    ? '<div class="sup-alerts">'+lowList.map(function(p){ return '<div class="sup-alert">⚠ <b>'+esc(p.product)+'</b> — reorder · '+fmtNum(p.total)+' / '+fmtNum(p.reorder)+(p.unit?' '+esc(p.unit):'')+'</div>'; }).join('')+'</div>'
+    : '';
   locs.forEach(function(g){
     let done=0; g.items.forEach(function(t){ if(SUP.cidx[supTargetKey(t)]) done++; });
     const prog = done>0 ? (done+'/'+g.items.length+' counted') : (g.items.length+' item'+(g.items.length===1?'':'s'));
@@ -1108,9 +1134,7 @@ function supRowHtml(t, idx){
   const key=supTargetKey(t);
   const e=SUP.cidx[key];
   const last=e?e.last:null;
-  const qtyN=last?Number(last.quantity):null;
-  const re=(t.reorderAt===''||t.reorderAt==null)?null:Number(t.reorderAt);
-  const low=(re!=null && !isNaN(re) && qtyN!=null && !isNaN(qtyN) && qtyN<=re);
+  const low=supProdLow(t);
   const saved=!!SUP.justSaved[key];
   const u=t.unit||'lbs';
   const nameHtml=esc(t.product||'(unnamed)')+(t.category?' <span class="sr-cat">'+esc(t.category)+'</span>':'');

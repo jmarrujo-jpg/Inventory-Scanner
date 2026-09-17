@@ -669,7 +669,7 @@ var API_SECRET = '';
 
 /* Bump this on every page change — the number shows in the bottom-right corner so you can
    confirm a reload actually picked up the latest page (an old cached page has no tag). */
-var APP_VERSION = 'v62';
+var APP_VERSION = 'v63';
 
 /* Call a backend function: callApi('fn', [arg1, arg2]) -> Promise(result). */
 function callApi(fn, args){
@@ -937,6 +937,15 @@ function supCountsIndex(){
   });
   return idx;
 }
+// "pallets" method: log one pallet's exact weight; it ADDS to the cage's running total (kept as
+// history), instead of replacing it. Any of these Method spellings turns a row into this mode.
+function supIsAccum(t){ return /^(pallet|pallets|accum|accumulate|weight|weights|running)$/.test(String(t.method||'').toLowerCase().trim()); }
+// The cage's current running total = the newest saved Quantity for this item (0 if none yet).
+function supRunningTotal(t){
+  const e=SUP.cidx[supTargetKey(t)];
+  const n = (e&&e.last!=null) ? Number(e.last.quantity) : NaN;
+  return isNaN(n) ? 0 : n;
+}
 // Method math + human-readable note + short "= X unit" preview.
 function supCompute(t, raw){
   const v=supNum(raw);
@@ -944,6 +953,12 @@ function supCompute(t, raw){
   const fw=Number(t.fullWeight);
   const u=t.unit||'lbs';
   const fwTxt=isNaN(fw)?'?':fw.toLocaleString();
+  if(supIsAccum(t)){
+    const prev=supRunningTotal(t);
+    const total=prev+v;
+    const sign=v>=0?'+':'−';
+    return {qty:total, note:sign+Math.abs(v).toLocaleString()+' '+u+(v>=0?' (pallet)':' (adjust)'), short:'total '+total.toLocaleString()+' '+u, accum:true, add:v, prev:prev};
+  }
   if(t.method==='percent'){
     const lbs=Math.round((isNaN(fw)?0:fw)*v/100);
     return {qty:lbs, note:v+'% full', short:lbs.toLocaleString()+' '+u};
@@ -1022,13 +1037,19 @@ function supRowHtml(t, idx){
   const re=(t.reorderAt===''||t.reorderAt==null)?null:Number(t.reorderAt);
   const low=(re!=null && !isNaN(re) && qtyN!=null && !isNaN(qtyN) && qtyN<=re);
   const saved=!!SUP.justSaved[key];
+  const accum=supIsAccum(t);
+  const u=t.unit||'lbs';
   const bits=[];
   if(t.category) bits.push(esc(t.category));
-  if(last){ bits.push('last <b>'+fmtNum(last.quantity)+(t.unit?' '+esc(t.unit):'')+'</b>'+(low?' <span class="warn">⚠</span>':'')); }
+  if(accum){
+    const cnt=e?e.list.length:0;
+    if(last){ bits.push('total <b>'+fmtNum(last.quantity)+' '+esc(u)+'</b> · '+cnt+' pallet'+(cnt===1?'':'s')+(low?' <span class="warn">⚠</span>':'')); }
+    else bits.push('no pallets yet');
+  } else if(last){ bits.push('last <b>'+fmtNum(last.quantity)+(t.unit?' '+esc(t.unit):'')+'</b>'+(low?' <span class="warn">⚠</span>':'')); }
   else { bits.push('not counted'); }
   const sub=bits.join(' · ');
-  const suf = t.method==='percent' ? '%' : (t.method==='units' ? 'units' : (t.unit||'ea'));
-  const ph = t.method==='percent' ? '0–100' : '0';
+  const suf = accum ? u : (t.method==='percent' ? '%' : (t.method==='units' ? 'units' : (t.unit||'ea')));
+  const ph = accum ? 'pallet' : (t.method==='percent' ? '0–100' : '0');
   const raw = SUP.pending[key];
   const dirty = raw!=null && raw!=='';
   const cval = dirty ? supCompute(t, raw) : null;

@@ -246,6 +246,8 @@ body.tk-open .modal-card{margin-top:12px;margin-bottom:12px}
 .sr-suf{font-size:11px;font-weight:800;color:var(--ink-soft);min-width:30px;text-align:left}
 .sr-calc{font-size:11px;font-weight:700;color:var(--dept);height:13px;line-height:13px;white-space:nowrap}
 .sr-calc.done{color:var(--ok)}
+.sr-add{margin-top:3px;font-size:11px;font-weight:800;color:var(--dept);background:var(--dept-soft);border:1px solid var(--line);border-radius:8px;padding:5px 10px}
+.sr-del{flex:0 0 auto;width:24px;height:24px;font-size:17px;font-weight:800;color:var(--danger);background:transparent;line-height:1}
 .sup-empty{font-size:14px;color:var(--ink-soft);background:#fff;border:1px solid var(--line);border-radius:11px;padding:16px;text-align:center}
 .sup-savebar{position:fixed;left:0;right:0;bottom:0;z-index:70;display:flex;padding:12px 16px calc(12px + env(safe-area-inset-bottom));
   background:linear-gradient(180deg,rgba(233,234,236,0),var(--paper) 42%)}
@@ -669,7 +671,7 @@ var API_SECRET = '';
 
 /* Bump this on every page change — the number shows in the bottom-right corner so you can
    confirm a reload actually picked up the latest page (an old cached page has no tag). */
-var APP_VERSION = 'v63';
+var APP_VERSION = 'v64';
 
 /* Call a backend function: callApi('fn', [arg1, arg2]) -> Promise(result). */
 function callApi(fn, args){
@@ -1029,6 +1031,26 @@ function renderSupplies(){
   box.innerHTML=html;
   updateSaveBar();
 }
+// Pending values are stored per target key as an array of sub-entries ("barrels"/pallets on a
+// line). Most rows have one; the compound presses can have several % readings that sum.
+function supVals(key){ const p=SUP.pending[key]; if(Array.isArray(p)) return p.slice(); if(p!=null && p!=='') return [String(p)]; return ['']; }
+// percent/units rows can hold several summed sub-entries; accumulate & each stay single.
+function supMultiEnabled(t){ return !supIsAccum(t) && (t.method==='percent' || t.method==='units'); }
+// Compute the target total from all its sub-entries (accumulate uses just the first as an add).
+function supComputeMulti(t, vals){
+  if(supIsAccum(t)) return supCompute(t, (vals&&vals.length?vals[0]:''));
+  const list=(vals||[]).filter(function(r){ return supNum(r)!=null; });
+  if(!list.length) return null;
+  const parts=list.map(function(r){ return supCompute(t, r); });
+  const qty=parts.reduce(function(a,c){ return a+(Number(c.qty)||0); },0);
+  const u=t.unit||'lbs';
+  let note;
+  if(t.method==='percent') note=list.map(function(r){ return supNum(r)+'%'; }).join(' + ');
+  else if(t.method==='units') note=list.map(function(r){ return supNum(r); }).join(' + ')+' units';
+  else note='';
+  const short = parts.length>1 ? (qty.toLocaleString()+' '+u+' ('+parts.length+')') : parts[0].short;
+  return {qty:qty, note:note, short:short, n:parts.length};
+}
 function supRowHtml(t, idx){
   const key=supTargetKey(t);
   const e=SUP.cidx[key];
@@ -1038,6 +1060,7 @@ function supRowHtml(t, idx){
   const low=(re!=null && !isNaN(re) && qtyN!=null && !isNaN(qtyN) && qtyN<=re);
   const saved=!!SUP.justSaved[key];
   const accum=supIsAccum(t);
+  const multi=supMultiEnabled(t);
   const u=t.unit||'lbs';
   const bits=[];
   if(t.category) bits.push(esc(t.category));
@@ -1050,31 +1073,62 @@ function supRowHtml(t, idx){
   const sub=bits.join(' · ');
   const suf = accum ? u : (t.method==='percent' ? '%' : (t.method==='units' ? 'units' : (t.unit||'ea')));
   const ph = accum ? 'pallet' : (t.method==='percent' ? '0–100' : '0');
-  const raw = SUP.pending[key];
-  const dirty = raw!=null && raw!=='';
-  const cval = dirty ? supCompute(t, raw) : null;
+  const vals = accum
+    ? [ (Array.isArray(SUP.pending[key])?(SUP.pending[key][0]||''):(SUP.pending[key]!=null?String(SUP.pending[key]):'')) ]
+    : supVals(key);
+  let inputs='';
+  vals.forEach(function(v,i){
+    const dirty = v!=null && v!=='';
+    inputs+='<div class="sr-inwrap">'
+      +((multi && i>0)?'<button type="button" class="sr-del" onclick="supDelBar('+idx+','+i+')" aria-label="Remove">×</button>':'')
+      +'<input class="sr-in'+(dirty?' dirty':'')+'" id="sin_'+idx+'_'+i+'" inputmode="decimal" autocomplete="off" placeholder="'+ph+'" value="'+(v!=null?esc(String(v)):'')+'" oninput="supInput('+idx+','+i+')" onfocus="this.select()">'
+      +'<span class="sr-suf">'+esc(suf)+'</span></div>';
+  });
+  const addBtn = multi ? '<button type="button" class="sr-add" onclick="supAddBar('+idx+')">＋ add</button>' : '';
+  const cval = supComputeMulti(t, vals);
   const calc = saved ? '✓ saved' : (cval&&cval.short ? '= '+cval.short : '');
   return '<div class="sup-row'+(low?' low':'')+(saved?' saved':'')+'">'
     +'<div class="sr-info"><div class="sr-name">'+esc(t.product||'(unnamed)')+'</div>'
       +'<div class="sr-sub">'+sub+'</div></div>'
-    +'<div class="sr-entry"><div class="sr-inwrap">'
-      +'<input class="sr-in'+(dirty?' dirty':'')+'" id="sin_'+idx+'" inputmode="decimal" autocomplete="off" placeholder="'+ph+'" value="'+(raw!=null?esc(String(raw)):'')+'" oninput="supInput('+idx+')" onfocus="this.select()">'
-      +'<span class="sr-suf">'+esc(suf)+'</span></div>'
+    +'<div class="sr-entry">'+inputs+addBtn
       +'<div class="sr-calc'+(saved?' done':'')+'" id="scal_'+idx+'">'+esc(calc)+'</div>'
     +'</div></div>';
 }
-function supInput(idx){
+function supInput(idx,i){
   const t=SUP.view[idx]; if(!t) return;
-  const el=$('sin_'+idx); if(!el) return;
-  const raw=el.value.trim(); const key=supTargetKey(t);
-  if(raw==='') delete SUP.pending[key]; else SUP.pending[key]=raw;
+  const key=supTargetKey(t);
+  const el=$('sin_'+idx+'_'+i);
+  if(supIsAccum(t)){
+    const raw=el?el.value.trim():'';
+    if(raw==='') delete SUP.pending[key]; else SUP.pending[key]=[raw];
+  } else {
+    const arr=supVals(key);
+    while(arr.length<=i) arr.push('');
+    arr[i]= el?el.value.trim():'';
+    if(arr.some(function(x){ return x!==''; })) SUP.pending[key]=arr; else delete SUP.pending[key];
+  }
   if(SUP.justSaved[key]) delete SUP.justSaved[key];
-  el.classList.toggle('dirty', raw!=='');
+  if(el) el.classList.toggle('dirty', !!el.value.trim());
   const cal=$('scal_'+idx);
-  if(cal){ const c=raw===''?null:supCompute(t, raw); cal.textContent=(c&&c.short)?('= '+c.short):''; cal.classList.remove('done'); }
+  if(cal){ const c=supComputeMulti(t, supVals(key)); cal.textContent=(c&&c.short)?('= '+c.short):''; cal.classList.remove('done'); }
   updateSaveBar();
 }
-function supPendingCount(){ let n=0; for(const k in SUP.pending){ if(supNum(SUP.pending[k])!=null) n++; } return n; }
+function supAddBar(idx){
+  const t=SUP.view[idx]; if(!t) return;
+  const key=supTargetKey(t);
+  const arr=supVals(key); arr.push('');
+  SUP.pending[key]=arr;
+  renderSupplies();
+  const el=$('sin_'+idx+'_'+(arr.length-1)); if(el) el.focus();
+}
+function supDelBar(idx,i){
+  const t=SUP.view[idx]; if(!t) return;
+  const key=supTargetKey(t);
+  const arr=supVals(key); arr.splice(i,1);
+  if(arr.some(function(x){ return x!==''; })) SUP.pending[key]=arr; else delete SUP.pending[key];
+  renderSupplies();
+}
+function supPendingCount(){ let n=0; for(const k in SUP.pending){ const t=SUP.byKey[k]; if(t && supComputeMulti(t, supVals(k))!=null) n++; } return n; }
 function updateSaveBar(){
   const bar=$('supSaveBar'), btn=$('supSaveBtn'); if(!bar||!btn) return;
   const n=supPendingCount();
@@ -1084,9 +1138,8 @@ function updateSaveBar(){
 function supSaveAll(){
   const entries=[], keys=[];
   for(const key in SUP.pending){
-    const raw=SUP.pending[key], t=SUP.byKey[key];
-    if(!t) continue;
-    const c=supCompute(t, raw); if(c==null) continue;
+    const t=SUP.byKey[key]; if(!t) continue;
+    const c=supComputeMulti(t, supVals(key)); if(c==null) continue;
     entries.push({ section:t.section||'', group:t.location||'', category:t.category||'', item:t.product||'',
       quantity:c.qty, unit:t.unit||'', reorderAt:(t.reorderAt===''||t.reorderAt==null)?'':t.reorderAt,
       note:c.note||'', updated:todayISO() });

@@ -693,7 +693,7 @@ var API_SECRET = '';
 
 /* Bump this on every page change — the number shows in the bottom-right corner so you can
    confirm a reload actually picked up the latest page (an old cached page has no tag). */
-var APP_VERSION = 'v71';
+var APP_VERSION = 'v72';
 
 /* Call a backend function: callApi('fn', [arg1, arg2]) -> Promise(result). */
 function callApi(fn, args){
@@ -936,15 +936,32 @@ function loadSupplies(){
     $('supList').innerHTML='<div class="sup-empty">Couldn’t load supplies.<br>Check the <b>Metals_Supplies</b> lookup tab exists and the output workbook is shared with <b>edit</b> access, then tap ↻.</div>';
   });
 }
+// A material's Reorder At is a summed-weight threshold, so it only needs to be set on ONE of the
+// material's catalog rows (Section + Product). Fill it down to every blank row of that material so
+// each barrel/location writes the threshold to the sheet for the dashboard. Explicit per-row values
+// are left untouched.
+function supReorderMap(){
+  const m={};
+  SUP.catalog.forEach(function(c){
+    const mk=norm(c.section)+''+norm(c.product);
+    const v=(c.reorderAt===''||c.reorderAt==null)?'':c.reorderAt;
+    if(v!=='' && m[mk]==null) m[mk]=v;
+  });
+  return m;
+}
 // Expand every catalog row into one count target per listed Location.
 function supTargets(){
+  const reMap=supReorderMap();
   const out=[];
   SUP.catalog.forEach(function(c){
+    const mk=norm(c.section)+''+norm(c.product);
+    const own=(c.reorderAt===''||c.reorderAt==null)?'':c.reorderAt;
+    const reEff=(own!=='')?own:(reMap[mk]!=null?reMap[mk]:'');
     const locs=String(c.locations||'').split(',').map(function(s){ return s.trim(); }).filter(Boolean);
     (locs.length?locs:['']).forEach(function(loc){
       out.push({
         board:c.board||'', section:c.section||'', category:c.category||'', product:c.product||'',
-        method:c.method||'', fullWeight:c.fullWeight, unit:c.unit||'', location:loc, reorderAt:c.reorderAt
+        method:c.method||'', fullWeight:c.fullWeight, unit:c.unit||'', location:loc, reorderAt:reEff
       });
     });
   });

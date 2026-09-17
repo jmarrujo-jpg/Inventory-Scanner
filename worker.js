@@ -50,7 +50,7 @@ export default {
       new Response(JSON.stringify(obj), { status, headers: { ...cors, 'Content-Type': 'application/json' } });
 
     if (request.method === 'OPTIONS') return new Response(null, { status: 204, headers: cors });
-    if (request.method === 'GET') return json({ ok: true, service: 'inventory-count-api', build: 'v11' }, 200);
+    if (request.method === 'GET') return json({ ok: true, service: 'inventory-count-api', build: 'v12' }, 200);
     if (request.method !== 'POST') return json({ ok: false, error: 'Method not allowed' }, 405);
 
     let payload;
@@ -76,6 +76,7 @@ async function handle(fn, args, env) {
   if (fn === 'suppliesCatalog') return suppliesCatalog(env);  // Metals_Supplies lookup tab (scanner workbook)
   if (fn === 'suppliesRead') return suppliesRead(env);        // Metals Supplies output tab (Log workbook)
   if (fn === 'suppliesAppend') return suppliesAppend(env, args[0]);
+  if (fn === 'suppliesAppendMany') return suppliesAppendMany(env, args[0]);
   const sheets = await makeSheets(env);
   switch (fn) {
     case 'getLookups': return getLookups(sheets);
@@ -193,15 +194,24 @@ async function suppliesRead(env) {
   }
   return { rows: out };
 }
-async function suppliesAppend(env, e) {
+function suppliesRow(e) {
   e = e || {};
-  const sheets = await makeSheets(env, LOG_SHEET_ID);
-  const row = [
+  return [
     str_(e.section), str_(e.group), str_(e.category), str_(e.item),
     num_(e.quantity), str_(e.unit), num_(e.reorderAt), str_(e.note), str_(e.updated),
   ];
-  await sheets.appendEnsuring(SUPPLIES_TAB, row, SUPPLIES_HEADER);
+}
+async function suppliesAppend(env, e) {
+  const sheets = await makeSheets(env, LOG_SHEET_ID);
+  await sheets.appendEnsuring(SUPPLIES_TAB, suppliesRow(e), SUPPLIES_HEADER);
   return true;
+}
+async function suppliesAppendMany(env, entries) {
+  entries = Array.isArray(entries) ? entries : [];
+  if (!entries.length) return { saved: 0 };
+  const sheets = await makeSheets(env, LOG_SHEET_ID);
+  await sheets.appendEnsuringMany(SUPPLIES_TAB, entries.map(suppliesRow), SUPPLIES_HEADER);
+  return { saved: entries.length };
 }
 
 // ---------------- value helpers (match the old Apps Script) ----------------
@@ -415,6 +425,11 @@ async function makeSheets(env, overrideId) {
       return call(base + '/values/' + encodeURIComponent(tab + '!A1') + ':append?valueInputOption=RAW&insertDataOption=INSERT_ROWS',
         { method: 'POST', headers: { ...auth, 'Content-Type': 'application/json' }, body: JSON.stringify({ values: [row] }) });
     },
+    // Append several rows at once (one Sheets call).
+    async appendMany(tab, rows) {
+      return call(base + '/values/' + encodeURIComponent(tab + '!A1') + ':append?valueInputOption=RAW&insertDataOption=INSERT_ROWS',
+        { method: 'POST', headers: { ...auth, 'Content-Type': 'application/json' }, body: JSON.stringify({ values: rows }) });
+    },
     // Overwrite values starting at a range (e.g. "Cans!A5").
     async update(rangeA1, values) {
       return call(base + '/values/' + encodeURIComponent(rangeA1) + '?valueInputOption=RAW',
@@ -476,6 +491,18 @@ async function makeSheets(env, overrideId) {
         if (String((err && err.message) || '').indexOf('Unable to parse range') !== -1) {
           await this.ensureTab(tab, header);
           return await this.append(tab, row);
+        }
+        throw err;
+      }
+    },
+    // Append many rows; create the tab (with header) and retry once if it doesn't exist yet.
+    async appendEnsuringMany(tab, rows, header) {
+      try {
+        return await this.appendMany(tab, rows);
+      } catch (err) {
+        if (String((err && err.message) || '').indexOf('Unable to parse range') !== -1) {
+          await this.ensureTab(tab, header);
+          return await this.appendMany(tab, rows);
         }
         throw err;
       }

@@ -222,20 +222,28 @@ body.tk-open .modal-card{margin-top:12px;margin-bottom:12px}
 .sup-group{margin:0 0 12px}
 .sup-group>h3{font-size:12px;font-weight:800;color:var(--ink-soft);text-transform:uppercase;letter-spacing:.07em;margin:0 0 7px}
 .sup-cat{font-size:11px;font-weight:800;color:var(--dept);opacity:.85;margin:8px 0 5px;letter-spacing:.03em}
-.sup-card{display:flex;align-items:center;gap:10px;background:#fff;border:1px solid var(--line);border-radius:11px;padding:11px 13px;margin-bottom:8px;width:100%;text-align:left}
-.sup-card:active{transform:scale(.99)}
-.sup-card.low{border-color:#E4B4AB;background:#FDF3F1}
-.sup-main{flex:1;min-width:0}
-.sup-name{font-weight:800;font-size:15px;color:var(--ink);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.sup-meta{font-size:12px;color:var(--ink-soft);margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.sup-qty{font-family:'JetBrains Mono';text-align:right;flex:none;display:flex;flex-direction:column;align-items:flex-end}
-.sup-qty .n{font-weight:800;font-size:21px;line-height:1;white-space:nowrap}
-.sup-qty .n small{font-size:10px;font-weight:700;color:var(--ink-soft);margin-left:2px;letter-spacing:.02em}
-.sup-qty.low .n{color:var(--danger)}
-.sup-qty .cnt{font-size:10px;color:var(--ink-soft);margin-top:3px;letter-spacing:.02em}
-.sup-flag{font-size:10px;font-weight:800;color:var(--danger);margin-top:2px;letter-spacing:.04em}
+#supList{padding-bottom:92px}
+.sup-row{display:flex;align-items:center;gap:10px;background:#fff;border:1px solid var(--line);border-radius:11px;padding:9px 11px;margin-bottom:7px}
+.sup-row.low{border-color:#E4B4AB;background:#FDF3F1}
+.sup-row.saved{border-color:var(--ok);background:#F1F8F3}
+.sr-info{flex:1;min-width:0}
+.sr-name{font-weight:800;font-size:15px;color:var(--ink);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.sr-sub{font-size:11.5px;color:var(--ink-soft);margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.sr-sub b{color:var(--ink)}
+.sr-sub .warn{color:var(--danger);font-weight:800}
+.sr-entry{flex:0 0 auto;display:flex;flex-direction:column;align-items:flex-end;gap:2px}
+.sr-inwrap{display:flex;align-items:center;gap:5px}
+.sr-in{width:76px;height:46px;border:1.5px solid var(--line);border-radius:9px;text-align:right;font-family:'JetBrains Mono';font-weight:800;font-size:18px;padding:0 9px;background:#fff;outline:none;color:var(--ink)}
+.sr-in:focus{border-color:var(--dept);box-shadow:0 0 0 3px var(--dept-soft)}
+.sr-in.dirty{border-color:var(--dept-accent);box-shadow:0 0 0 3px rgba(232,162,26,.18)}
+.sr-suf{font-size:11px;font-weight:800;color:var(--ink-soft);min-width:30px;text-align:left}
+.sr-calc{font-size:11px;font-weight:700;color:var(--dept);height:13px;line-height:13px;white-space:nowrap}
+.sr-calc.done{color:var(--ok)}
 .sup-empty{font-size:14px;color:var(--ink-soft);background:#fff;border:1px solid var(--line);border-radius:11px;padding:16px;text-align:center}
-.sup-calc{font-size:14px;font-weight:800;color:var(--dept);background:var(--dept-soft);border-radius:9px;padding:10px 12px;margin:0 0 12px;text-align:center}
+.sup-savebar{position:fixed;left:0;right:0;bottom:0;z-index:70;display:flex;padding:12px 16px calc(12px + env(safe-area-inset-bottom));
+  background:linear-gradient(180deg,rgba(233,234,236,0),var(--paper) 42%)}
+.sup-savebar.hide{display:none}
+.sup-savebar .btn{width:100%;height:56px;box-shadow:0 8px 24px rgba(0,0,0,.18)}
 /* mode switch (Scan item / Count by row) at the top of the count screen */
 .modeseg{display:flex;gap:6px;margin:0 0 10px;padding:4px;background:#e9ebee;border-radius:12px}
 .modeseg button{flex:1;height:42px;border:0;border-radius:9px;background:transparent;color:var(--ink-soft);
@@ -504,6 +512,9 @@ html.modal-lock body{position:fixed;left:0;right:0;width:100%;overflow:hidden}
       </div>
       <div id="supList"><div class="sup-empty">Loading supplies…</div></div>
     </div>
+    <div class="sup-savebar hide" id="supSaveBar">
+      <button type="button" class="btn primary" id="supSaveBtn" onclick="supSaveAll()">Save counts</button>
+    </div>
   </section>
 
 </div>
@@ -610,22 +621,6 @@ html.modal-lock body{position:fixed;left:0;right:0;width:100%;overflow:hidden}
   </div>
 </div>
 
-<!-- Metals Supplies: record a new count for one product at one location -->
-<div id="supCountModal" class="modal hide">
-  <div class="modal-card">
-    <div class="modal-title" id="supcTitle">Item</div>
-    <div class="modal-hint" id="supcSub"></div>
-    <div class="fld"><label id="supcQtyLabel">Count</label>
-      <input id="supcQty" class="big" inputmode="decimal" autocomplete="off" placeholder="0" oninput="supcRecalc()" onfocus="this.select()"></div>
-    <div class="sup-calc" id="supcCalc" style="display:none"></div>
-    <div class="fld"><label>Note (optional)</label>
-      <input id="supcNote" autocomplete="off" placeholder="reading is filled in automatically"></div>
-    <div class="modal-actions">
-      <button type="button" class="btn ghost" onclick="supCountClose()">Cancel</button>
-      <button type="button" class="btn primary" id="supcSave" onclick="supCountSave()">Save count</button>
-    </div>
-  </div>
-</div>
 
 <!-- docked number pad: slides up while a count box (Full/Extra/Location) is active -->
 <div class="keypad" id="cardKeypad" aria-hidden="true">
@@ -666,7 +661,7 @@ var API_SECRET = '';
 
 /* Bump this on every page change — the number shows in the bottom-right corner so you can
    confirm a reload actually picked up the latest page (an old cached page has no tag). */
-var APP_VERSION = 'v60';
+var APP_VERSION = 'v61';
 
 /* Call a backend function: callApi('fn', [arg1, arg2]) -> Promise(result). */
 function callApi(fn, args){
@@ -866,13 +861,13 @@ function metalsMenuPick(which){
   else { openSupplies(); }
 }
 
-/* ================= Metals Supplies (catalog-driven, append-only counts) ================= */
+/* ================= Metals Supplies (catalog-driven, inline first-count) ================= */
 /* Catalog (what to count) comes from the "Metals_Supplies" lookup tab; each product expands to one
-   count target per Location. Recorded counts append to the "Metals Supplies" output tab, mapping
-   Section=Section, Group=Location, Category=Category, Item=Product. Method drives the math:
-   percent -> lbs = %/100 * Full Weight; units -> lbs = units * Full Weight; each -> plain count. */
-var SUP={catalog:[], counts:[], cidx:{}, view:[], loaded:false, err:false};
-var supCurrent=null;
+   count target per Location. You type each reading right on the list; one "Save counts" button
+   appends them all to the "Metals Supplies" output tab, mapping Section=Section, Group=Location,
+   Category=Category, Item=Product. Method drives the math: percent -> lbs = %/100 * Full Weight;
+   units -> lbs = units * Full Weight; each -> plain count. */
+var SUP={catalog:[], counts:[], cidx:{}, view:[], byKey:{}, pending:{}, justSaved:{}, loaded:false, err:false};
 
 function todayISO(){
   const n=new Date();
@@ -895,6 +890,7 @@ function openSupplies(){
 }
 function suppliesHome(){
   $('supplies').style.display='none';
+  $('supSaveBar').classList.add('hide');
   $('landing').style.display='flex';
 }
 function loadSupplies(){
@@ -933,18 +929,35 @@ function supCountsIndex(){
   });
   return idx;
 }
+// Method math + human-readable note + short "= X unit" preview.
+function supCompute(t, raw){
+  const v=supNum(raw);
+  if(v==null) return null;
+  const fw=Number(t.fullWeight);
+  const u=t.unit||'lbs';
+  const fwTxt=isNaN(fw)?'?':fw.toLocaleString();
+  if(t.method==='percent'){
+    const lbs=Math.round((isNaN(fw)?0:fw)*v/100);
+    return {qty:lbs, note:v+'% full', short:lbs.toLocaleString()+' '+u};
+  }
+  if(t.method==='units'){
+    const lbs=Math.round((isNaN(fw)?0:fw)*v);
+    return {qty:lbs, note:v+' unit'+(v===1?'':'s')+' × '+fwTxt+' '+u, short:lbs.toLocaleString()+' '+u};
+  }
+  return {qty:v, note:'', short:''}; // each
+}
 function renderSupplies(){
   if(!SUP.loaded) return;
   const targets=supTargets();
   SUP.cidx=supCountsIndex();
+  SUP.byKey={}; targets.forEach(function(t){ SUP.byKey[supTargetKey(t)]=t; });
   SUP.view=[];
   const box=$('supList');
-  if(!SUP.catalog.length){ $('supCount').textContent='0'; box.innerHTML='<div class="sup-empty">The <b>Metals_Supplies</b> lookup tab is empty or missing.</div>'; return; }
+  if(!SUP.catalog.length){ $('supCount').textContent='0'; box.innerHTML='<div class="sup-empty">The <b>Metals_Supplies</b> lookup tab is empty or missing.</div>'; updateSaveBar(); return; }
   const q=norm($('supSearch').value);
   const shown = q ? targets.filter(function(t){ return [t.board,t.section,t.category,t.product,t.location].some(function(s){ return norm(s).indexOf(q)!==-1; }); }) : targets;
   $('supCount').textContent=shown.length;
-  if(!shown.length){ box.innerHTML='<div class="sup-empty">No items match your filter.</div>'; return; }
-  // group Board -> Section -> (Category label) -> product@location cards
+  if(!shown.length){ box.innerHTML='<div class="sup-empty">No items match your filter.</div>'; updateSaveBar(); return; }
   const boards=[], bMap={};
   shown.forEach(function(t){
     const bName=t.board||'(no board)';
@@ -963,91 +976,80 @@ function renderSupplies(){
         const cat=t.category||'';
         if(cat!==lastCat){ if(cat) html+='<div class="sup-cat">'+esc(cat)+'</div>'; lastCat=cat; }
         const idx=SUP.view.length; SUP.view.push(t);
-        html+=supTargetCard(t, idx);
+        html+=supRowHtml(t, idx);
       });
       html+='</div>';
     });
     html+='</div>';
   });
   box.innerHTML=html;
+  updateSaveBar();
 }
-function supTargetCard(t, idx){
-  const e=SUP.cidx[supTargetKey(t)];
-  const last=e?e.last:null, cnt=e?e.list.length:0;
+function supRowHtml(t, idx){
+  const key=supTargetKey(t);
+  const e=SUP.cidx[key];
+  const last=e?e.last:null;
   const qtyN=last?Number(last.quantity):null;
   const re=(t.reorderAt===''||t.reorderAt==null)?null:Number(t.reorderAt);
   const low=(re!=null && !isNaN(re) && qtyN!=null && !isNaN(qtyN) && qtyN<=re);
-  const methodHint = t.method==='percent'?'% full':(t.method==='units'?'units':'each');
-  const meta=['📍 '+esc(t.location||'—'), esc(methodHint)];
-  meta.push(last ? ('last '+fmtNum(last.quantity)+(t.unit?' '+esc(t.unit):'')+' · '+esc(last.updated||'')) : 'not counted');
-  const qtyTxt=last?fmtNum(last.quantity):'—';
-  const unit=t.unit?('<small>'+esc(t.unit)+'</small>'):'';
-  return '<button type="button" class="sup-card'+(low?' low':'')+'" onclick="supCountOpen('+idx+')">'
-    +'<div class="sup-main"><div class="sup-name">'+esc(t.product||'(unnamed)')+'</div>'
-      +'<div class="sup-meta">'+meta.join(' · ')+'</div></div>'
-    +'<div class="sup-qty'+(low?' low':'')+'"><div class="n">'+qtyTxt+unit+'</div>'
-      +'<div class="cnt">'+(cnt?cnt+' count'+(cnt===1?'':'s'):'—')+'</div>'
-      +(low?'<div class="sup-flag">REORDER</div>':'')
-    +'</div></button>';
+  const saved=!!SUP.justSaved[key];
+  let sub='📍 '+esc(t.location||'—');
+  if(last){ sub+=' · last <b>'+fmtNum(last.quantity)+(t.unit?' '+esc(t.unit):'')+'</b>'; if(low) sub+=' <span class="warn">⚠</span>'; }
+  else { sub+=' · not counted'; }
+  const suf = t.method==='percent' ? '%' : (t.method==='units' ? 'units' : (t.unit||'ea'));
+  const ph = t.method==='percent' ? '0–100' : '0';
+  const raw = SUP.pending[key];
+  const dirty = raw!=null && raw!=='';
+  const cval = dirty ? supCompute(t, raw) : null;
+  const calc = saved ? '✓ saved' : (cval&&cval.short ? '= '+cval.short : '');
+  return '<div class="sup-row'+(low?' low':'')+(saved?' saved':'')+'">'
+    +'<div class="sr-info"><div class="sr-name">'+esc(t.product||'(unnamed)')+'</div>'
+      +'<div class="sr-sub">'+sub+'</div></div>'
+    +'<div class="sr-entry"><div class="sr-inwrap">'
+      +'<input class="sr-in'+(dirty?' dirty':'')+'" id="sin_'+idx+'" inputmode="decimal" autocomplete="off" placeholder="'+ph+'" value="'+(raw!=null?esc(String(raw)):'')+'" oninput="supInput('+idx+')" onfocus="this.select()">'
+      +'<span class="sr-suf">'+esc(suf)+'</span></div>'
+      +'<div class="sr-calc'+(saved?' done':'')+'" id="scal_'+idx+'">'+esc(calc)+'</div>'
+    +'</div></div>';
 }
-// Method math + human-readable breakdown for the note/preview.
-function supCompute(t, raw){
-  const v=supNum(raw);
-  if(v==null) return null;
-  const fw=Number(t.fullWeight);
-  const u=t.unit||'lbs';
-  const fwTxt=isNaN(fw)?'?':fw.toLocaleString();
-  if(t.method==='percent'){
-    const lbs=Math.round((isNaN(fw)?0:fw)*v/100);
-    return {qty:lbs, note:v+'% full', preview:v+'% of '+fwTxt+' '+u+' = '+lbs.toLocaleString()+' '+u};
+function supInput(idx){
+  const t=SUP.view[idx]; if(!t) return;
+  const el=$('sin_'+idx); if(!el) return;
+  const raw=el.value.trim(); const key=supTargetKey(t);
+  if(raw==='') delete SUP.pending[key]; else SUP.pending[key]=raw;
+  if(SUP.justSaved[key]) delete SUP.justSaved[key];
+  el.classList.toggle('dirty', raw!=='');
+  const cal=$('scal_'+idx);
+  if(cal){ const c=raw===''?null:supCompute(t, raw); cal.textContent=(c&&c.short)?('= '+c.short):''; cal.classList.remove('done'); }
+  updateSaveBar();
+}
+function supPendingCount(){ let n=0; for(const k in SUP.pending){ if(supNum(SUP.pending[k])!=null) n++; } return n; }
+function updateSaveBar(){
+  const bar=$('supSaveBar'), btn=$('supSaveBtn'); if(!bar||!btn) return;
+  const n=supPendingCount();
+  if(n>0 && $('supplies').style.display!=='none'){ bar.classList.remove('hide'); btn.disabled=false; btn.textContent='Save '+n+' count'+(n===1?'':'s'); }
+  else bar.classList.add('hide');
+}
+function supSaveAll(){
+  const entries=[], keys=[];
+  for(const key in SUP.pending){
+    const raw=SUP.pending[key], t=SUP.byKey[key];
+    if(!t) continue;
+    const c=supCompute(t, raw); if(c==null) continue;
+    entries.push({ section:t.section||'', group:t.location||'', category:t.category||'', item:t.product||'',
+      quantity:c.qty, unit:t.unit||'', reorderAt:(t.reorderAt===''||t.reorderAt==null)?'':t.reorderAt,
+      note:c.note||'', updated:todayISO() });
+    keys.push(key);
   }
-  if(t.method==='units'){
-    const lbs=Math.round((isNaN(fw)?0:fw)*v);
-    return {qty:lbs, note:v+' unit'+(v===1?'':'s')+' × '+fwTxt+' '+u, preview:v+' × '+fwTxt+' '+u+' = '+lbs.toLocaleString()+' '+u};
-  }
-  return {qty:v, note:'', preview:''}; // each
-}
-function supCountOpen(i){
-  const t=SUP.view[i]; if(!t) return;
-  supCurrent=t;
-  $('supcTitle').textContent=t.product||'(unnamed)';
-  const path=[t.section, t.location, t.category].filter(Boolean).join(' › ');
-  const e=SUP.cidx[supTargetKey(t)]; const last=e?e.last:null;
-  const lastTxt = last ? ('Last: <b>'+fmtNum(last.quantity)+(t.unit?' '+esc(t.unit):'')+'</b> on '+esc(last.updated||'—')) : 'No prior count';
-  $('supcSub').innerHTML=esc(path)+'<br>'+lastTxt;
-  $('supcQtyLabel').textContent = t.method==='percent' ? '% full (0–100)' : (t.method==='units' ? '# of units' : 'Count ('+(t.unit||'ea')+')');
-  $('supcQty').value=''; $('supcNote').value='';
-  $('supcCalc').textContent=''; $('supcCalc').style.display='none';
-  $('supCountModal').classList.remove('hide');
-  setTimeout(function(){ $('supcQty').focus(); },60);
-}
-function supCountClose(){ $('supCountModal').classList.add('hide'); supCurrent=null; }
-function supcRecalc(){
-  if(!supCurrent){ return; }
-  const c=supCompute(supCurrent, $('supcQty').value.trim());
-  const el=$('supcCalc');
-  if(c && c.preview){ el.textContent=c.preview; el.style.display=''; } else { el.textContent=''; el.style.display='none'; }
-}
-function supCountSave(){
-  if(!supCurrent) return;
-  const t=supCurrent;
-  const c=supCompute(t, $('supcQty').value.trim());
-  if(c==null){ toast('Enter a number','err'); return; }
-  const noteTyped=$('supcNote').value.trim();
-  const entry={
-    section:t.section||'', group:t.location||'', category:t.category||'', item:t.product||'',
-    quantity:c.qty, unit:t.unit||'', reorderAt:(t.reorderAt===''||t.reorderAt==null)?'':t.reorderAt,
-    note: noteTyped || c.note || '', updated:todayISO()
-  };
-  const btn=$('supcSave'); if(btn){ btn.disabled=true; btn.textContent='Saving…'; }
-  callApi('suppliesAppend',[entry]).then(function(){
-    SUP.counts.push(entry);
-    if(btn){ btn.disabled=false; btn.textContent='Save count'; }
-    supCountClose(); renderSupplies();
-    toast('Counted '+(t.product||'item')+' · '+fmtNum(c.qty)+(t.unit?' '+t.unit:''));
+  if(!entries.length) return;
+  const btn=$('supSaveBtn'); btn.disabled=true; btn.textContent='Saving '+entries.length+'…';
+  callApi('suppliesAppendMany',[entries]).then(function(){
+    entries.forEach(function(e){ SUP.counts.push(e); });
+    SUP.justSaved={}; keys.forEach(function(k){ delete SUP.pending[k]; SUP.justSaved[k]=1; });
+    renderSupplies();
+    toast('Saved '+entries.length+' count'+(entries.length===1?'':'s'));
+    setTimeout(function(){ SUP.justSaved={}; if($('supplies').style.display!=='none') renderSupplies(); }, 2600);
   }).catch(function(err){
-    if(btn){ btn.disabled=false; btn.textContent='Save count'; }
-    toast('Save failed — try again','err'); console.error(err);
+    updateSaveBar(); toast('Save failed — try again','err'); console.error(err);
   });
 }
 

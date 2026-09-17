@@ -50,7 +50,7 @@ export default {
       new Response(JSON.stringify(obj), { status, headers: { ...cors, 'Content-Type': 'application/json' } });
 
     if (request.method === 'OPTIONS') return new Response(null, { status: 204, headers: cors });
-    if (request.method === 'GET') return json({ ok: true, service: 'inventory-count-api', build: 'v10' }, 200);
+    if (request.method === 'GET') return json({ ok: true, service: 'inventory-count-api', build: 'v11' }, 200);
     if (request.method !== 'POST') return json({ ok: false, error: 'Method not allowed' }, 405);
 
     let payload;
@@ -73,7 +73,8 @@ export default {
 async function handle(fn, args, env) {
   args = args || [];
   if (fn === 'getLogs') return getLogs(env);   // reads a SEPARATE workbook
-  if (fn === 'suppliesRead') return suppliesRead(env);       // Metals Supplies tab in the Log workbook
+  if (fn === 'suppliesCatalog') return suppliesCatalog(env);  // Metals_Supplies lookup tab (scanner workbook)
+  if (fn === 'suppliesRead') return suppliesRead(env);        // Metals Supplies output tab (Log workbook)
   if (fn === 'suppliesAppend') return suppliesAppend(env, args[0]);
   const sheets = await makeSheets(env);
   switch (fn) {
@@ -136,6 +137,37 @@ async function getLogs(env) {
 // enough). Identity of an item over time = Section + Group + Category + Item.
 const SUPPLIES_TAB = 'Metals Supplies';
 const SUPPLIES_HEADER = ['Section', 'Group', 'Category', 'Item', 'Quantity', 'Unit', 'Reorder At', 'Note', 'Updated'];
+
+// Catalog of what to count lives in the SCANNER workbook (default SHEET_ID) in a lookup tab named
+// "Metals_Supplies". Columns: Board | Section | Category | Product | Method | Full Weight | Unit |
+// Locations | Reorder At. "Locations" is a comma-separated list; each product expands to one count
+// target per location. Method is percent | units | each (drives the count math in the app).
+const SUPPLIES_LOOKUP_TAB = 'Metals_Supplies';
+async function suppliesCatalog(env) {
+  const sheets = await makeSheets(env); // default (scanner) workbook
+  let values;
+  try { values = await sheets.readAll(SUPPLIES_LOOKUP_TAB); }
+  catch (e) { if (String((e && e.message) || '').indexOf('Unable to parse range') !== -1) return { rows: [] }; throw e; }
+  if (!values.length) return { rows: [] };
+  const H = values[0].map((h) => String(h).trim().toLowerCase());
+  const at = (n) => H.indexOf(n);
+  const iBoard = at('board'), iSec = at('section'), iCat = at('category'), iProd = at('product'),
+        iMethod = at('method'), iFull = at('full weight'), iUnit = at('unit'), iLoc = at('locations'), iRe = at('reorder at');
+  const g = (r, i) => str_(i === -1 ? '' : r[i]);
+  const out = [];
+  for (let n = 1; n < values.length; n++) {
+    const r = values[n] || [];
+    if (str_(r[0]).indexOf('__META__') !== -1) continue;
+    const prod = g(r, iProd);
+    if (!prod) continue;
+    out.push({
+      board: g(r, iBoard), section: g(r, iSec), category: g(r, iCat), product: prod,
+      method: g(r, iMethod).toLowerCase(), fullWeight: num_(iFull === -1 ? '' : r[iFull]),
+      unit: g(r, iUnit), locations: g(r, iLoc), reorderAt: num_(iRe === -1 ? '' : r[iRe]),
+    });
+  }
+  return { rows: out };
+}
 async function suppliesRead(env) {
   const sheets = await makeSheets(env, LOG_SHEET_ID);
   let values;

@@ -263,8 +263,10 @@ body.tk-open .modal-card{margin-top:12px;margin-bottom:12px}
 .sgr-in:focus{border-color:var(--dept);box-shadow:0 0 0 3px var(--dept-soft)}
 .sgr-in.dirty{border-color:var(--dept-accent);box-shadow:0 0 0 3px rgba(232,162,26,.18)}
 .sgr-unit{font-size:12px;font-weight:700;color:var(--ink-soft);width:26px}
-.sgr-foot{display:flex;justify-content:space-between;align-items:center;margin-top:11px}
+.sgr-foot{display:flex;justify-content:space-between;align-items:center;gap:8px;margin-top:11px}
+.sgr-acts{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
 .sgr-add{font-size:12px;font-weight:800;color:var(--dept);background:var(--dept-soft);border:1px solid var(--line);border-radius:9px;padding:8px 13px}
+.sgr-same{font-size:12px;font-weight:800;color:#fff;background:var(--ok);border:1px solid var(--ok);border-radius:9px;padding:8px 13px}
 .sgr-calc{font-size:12px;font-weight:800;color:var(--dept)}
 .sgr-calc.done{color:var(--ok)}
 .sgr-chk{width:22px;height:22px;flex:0 0 auto;accent-color:var(--dept);margin:0}
@@ -693,7 +695,7 @@ var API_SECRET = '';
 
 /* Bump this on every page change — the number shows in the bottom-right corner so you can
    confirm a reload actually picked up the latest page (an old cached page has no tag). */
-var APP_VERSION = 'v74';
+var APP_VERSION = 'v75';
 
 /* Call a backend function: callApi('fn', [arg1, arg2]) -> Promise(result). */
 function callApi(fn, args){
@@ -1201,10 +1203,15 @@ function supGaylordRowHtml(t, idx){
   });
   const cval=supComputeMulti(t, state);
   const calc = saved ? '✓ saved' : (cval&&cval.short ? '= '+cval.short : '= total 0 '+u);
+  // If last week's gaylords are showing but nothing's been touched, offer a one-tap confirm so an
+  // unchanged cage still gets recorded (otherwise there's nothing "pending" to save).
+  const needConfirm = !!cval && SUP.pending[key]==null && !saved;
   return '<div class="sup-grow'+(saved?' saved':'')+'">'
     +'<div class="sgr-head"><div class="sgr-name">'+nameHtml+'</div><div class="sgr-tot">'+headTxt+'</div></div>'
     +lines
-    +'<div class="sgr-foot"><button type="button" class="sgr-add" onclick="supGayAdd('+idx+')">＋ Add gaylord</button>'
+    +'<div class="sgr-foot"><div class="sgr-acts">'
+      +(needConfirm?'<button type="button" class="sgr-same" onclick="supGayConfirm('+idx+')">✓ Same as last — count these</button>':'')
+      +'<button type="button" class="sgr-add" onclick="supGayAdd('+idx+')">＋ Add gaylord</button></div>'
       +'<span class="sgr-calc'+(saved?' done':'')+'" id="scal_'+idx+'">'+esc(calc)+'</span></div>'
     +'</div>';
 }
@@ -1234,6 +1241,20 @@ function supGaySync(idx){
 }
 function supGayInput(idx,i){ supGaySync(idx); }
 function supGayToggle(idx,i){ supGaySync(idx); }
+// One-tap "same as last week": record the gaylords currently shown (the carried-over cage) without
+// needing to add or edit anything, so an unchanged cage still saves.
+function supGayConfirm(idx){
+  const t=SUP.view[idx]; if(!t) return;
+  const key=t.rowKey;
+  const arr=supGayReadDOM(idx);
+  const on=arr.filter(function(g){ return g.on && supNum(g.w)!=null; });
+  if(!on.length){ toast('No gaylord weights to record','err'); return; }
+  SUP.pending[key]=arr;
+  if(SUP.justSaved[key]) delete SUP.justSaved[key];
+  renderSupplies();
+  updateSaveBar();
+  toast('Ready to save '+on.length+' gaylord'+(on.length===1?'':'s'));
+}
 function supGayAdd(idx){
   const t=SUP.view[idx]; if(!t) return;
   const key=t.rowKey;

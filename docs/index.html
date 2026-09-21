@@ -695,7 +695,7 @@ var API_SECRET = '';
 
 /* Bump this on every page change — the number shows in the bottom-right corner so you can
    confirm a reload actually picked up the latest page (an old cached page has no tag). */
-var APP_VERSION = 'v75';
+var APP_VERSION = 'v76';
 
 /* Call a backend function: callApi('fn', [arg1, arg2]) -> Promise(result). */
 function callApi(fn, args){
@@ -1288,6 +1288,7 @@ function supSaveAll(){
     keys.push(key);
   }
   if(!entries.length) return;
+  if(!confirm('Save '+entries.length+' count'+(entries.length===1?'':'s')+' to the sheet?\n\nThis records what you’ve entered. Tap Cancel if you’re not ready.')) return;
   const btn=$('supSaveBtn'); btn.disabled=true; btn.textContent='Saving '+entries.length+'…';
   callApi('suppliesAppendMany',[entries]).then(function(){
     entries.forEach(function(e){ SUP.counts.push(e); });

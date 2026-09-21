@@ -252,6 +252,9 @@ body.tk-open .modal-card{margin-top:12px;margin-bottom:12px}
 .sup-grow{background:#fff;border:1px solid var(--line);border-radius:11px;padding:11px 13px;margin-bottom:8px}
 .sup-grow.low{border-color:#E4B4AB;background:#FDF3F1}
 .sup-grow.saved{border-color:var(--ok);background:#F1F8F3}
+.sup-row.dirwarn,.sup-grow.dirwarn{border-color:#E8952B;background:#FDF3E2}
+.sr-warn{margin-top:5px;font-size:11.5px;font-weight:800;color:#A85E08;line-height:1.3}
+.sr-warn.hide{display:none}
 .sgr-head{display:flex;justify-content:space-between;align-items:baseline;gap:10px}
 .sgr-name{font-weight:800;font-size:15px;color:var(--ink);min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .sgr-tot{font-size:12px;color:var(--ink-soft);white-space:nowrap;flex:none}
@@ -695,7 +698,7 @@ var API_SECRET = '';
 
 /* Bump this on every page change — the number shows in the bottom-right corner so you can
    confirm a reload actually picked up the latest page (an old cached page has no tag). */
-var APP_VERSION = 'v76';
+var APP_VERSION = 'v77';
 
 /* Call a backend function: callApi('fn', [arg1, arg2]) -> Promise(result). */
 function callApi(fn, args){
@@ -1131,6 +1134,26 @@ function supComputeMulti(t, vals){
   const short = parts.length>1 ? (qty.toLocaleString()+' '+u+' ('+parts.length+')') : parts[0].short;
   return {qty:qty, note:note, short:short, n:parts.length};
 }
+// Copper is expected to trend one way: NEW copper gets used up (goes down), USED copper accumulates
+// (goes up). Return the expected direction: -1 = should go down, +1 = should go up, 0 = n/a.
+function supCopperDir(t){
+  if(norm(t.section)!=='COPPER') return 0;
+  const p=norm(t.product);
+  if(p.indexOf('NEW COPPER')!==-1) return -1;
+  if(p.indexOf('USED COPPER')!==-1) return 1;
+  return 0;
+}
+// Soft heads-up (not a block): flag when a copper count moves against its usual direction vs the
+// last count — e.g. new copper higher than last, or used copper lower — which often means the two
+// got swapped. Returns a short message, or '' when there's nothing to warn about.
+function supDirWarn(t, qty){
+  const dir=supCopperDir(t); if(!dir) return '';
+  const e=SUP.cidx[t.outKey]; const last=(e&&e.last)?Number(e.last.quantity):null;
+  if(last==null || isNaN(last) || qty==null || isNaN(qty)) return '';
+  if(dir<0 && qty>last) return '⚠ New copper is higher than last count — swapped with used?';
+  if(dir>0 && qty<last) return '⚠ Used copper is lower than last count — swapped with new?';
+  return '';
+}
 // Single-input row (percent / units / each).
 function supRowHtml(t, idx){
   const key=t.rowKey;
@@ -1160,9 +1183,11 @@ function supRowHtml(t, idx){
   });
   const cval = supComputeMulti(t, vals);
   const calc = saved ? '✓ saved' : (cval&&cval.short ? '= '+cval.short : '');
-  return '<div class="sup-row'+(saved?' saved':'')+'">'
+  const warnMsg = cval ? supDirWarn(t, cval.qty) : '';
+  return '<div class="sup-row'+(saved?' saved':'')+(warnMsg?' dirwarn':'')+'" id="srow_'+idx+'">'
     +'<div class="sr-info"><div class="sr-name">'+nameHtml+'</div>'
-      +'<div class="sr-sub">'+sub+'</div></div>'
+      +'<div class="sr-sub">'+sub+'</div>'
+      +'<div class="sr-warn'+(warnMsg?'':' hide')+'" id="swarn_'+idx+'">'+esc(warnMsg)+'</div></div>'
     +'<div class="sr-entry">'+inputs
       +'<div class="sr-calc'+(saved?' done':'')+'" id="scal_'+idx+'">'+esc(calc)+'</div>'
     +'</div></div>';
@@ -1206,14 +1231,22 @@ function supGaylordRowHtml(t, idx){
   // If last week's gaylords are showing but nothing's been touched, offer a one-tap confirm so an
   // unchanged cage still gets recorded (otherwise there's nothing "pending" to save).
   const needConfirm = !!cval && SUP.pending[key]==null && !saved;
-  return '<div class="sup-grow'+(saved?' saved':'')+'">'
+  const warnMsg = cval ? supDirWarn(t, cval.qty) : '';
+  return '<div class="sup-grow'+(saved?' saved':'')+(warnMsg?' dirwarn':'')+'" id="srow_'+idx+'">'
     +'<div class="sgr-head"><div class="sgr-name">'+nameHtml+'</div><div class="sgr-tot">'+headTxt+'</div></div>'
+    +'<div class="sr-warn'+(warnMsg?'':' hide')+'" id="swarn_'+idx+'">'+esc(warnMsg)+'</div>'
     +lines
     +'<div class="sgr-foot"><div class="sgr-acts">'
       +(needConfirm?'<button type="button" class="sgr-same" onclick="supGayConfirm('+idx+')">✓ Same as last — count these</button>':'')
       +'<button type="button" class="sgr-add" onclick="supGayAdd('+idx+')">＋ Add gaylord</button></div>'
       +'<span class="sgr-calc'+(saved?' done':'')+'" id="scal_'+idx+'">'+esc(calc)+'</span></div>'
     +'</div>';
+}
+// Refresh the copper direction heads-up for a row as its value changes.
+function supUpdWarn(idx, t, c){
+  const msg = c ? supDirWarn(t, c.qty) : '';
+  const w=$('swarn_'+idx); if(w){ w.textContent=msg; w.classList.toggle('hide', !msg); }
+  const row=$('srow_'+idx); if(row) row.classList.toggle('dirwarn', !!msg);
 }
 // Single-input row handler (percent / units / each).
 function supInput(idx,i){
@@ -1223,8 +1256,10 @@ function supInput(idx,i){
   if(arr.some(function(x){ return x!==''; })) SUP.pending[key]=arr; else delete SUP.pending[key];
   if(SUP.justSaved[key]) delete SUP.justSaved[key];
   const el=$('sin_'+idx+'_'+i); if(el) el.classList.toggle('dirty', !!el.value.trim());
+  const c=supComputeMulti(t, arr);
   const cal=$('scal_'+idx);
-  if(cal){ const c=supComputeMulti(t, arr); cal.textContent=(c&&c.short)?('= '+c.short):''; cal.classList.remove('done'); }
+  if(cal){ cal.textContent=(c&&c.short)?('= '+c.short):''; cal.classList.remove('done'); }
+  supUpdWarn(idx, t, c);
   updateSaveBar();
 }
 // Gaylord handlers: sync DOM (weights + checkboxes) into pending and refresh the total.
@@ -1235,8 +1270,10 @@ function supGaySync(idx){
   if(arr.some(function(g){ return g.w!==''; })) SUP.pending[key]=arr; else delete SUP.pending[key];
   if(SUP.justSaved[key]) delete SUP.justSaved[key];
   arr.forEach(function(g,j){ const el=$('sin_'+idx+'_'+j); if(el) el.classList.toggle('dirty', g.w!==''); const ln=$('sgl_'+idx+'_'+j); if(ln) ln.classList.toggle('off', !g.on); });
+  const c=supComputeMulti(t, arr);
   const cal=$('scal_'+idx);
-  if(cal){ const c=supComputeMulti(t, arr); cal.textContent=(c&&c.short)?('= '+c.short):('= total 0 '+(t.unit||'lbs')); cal.classList.remove('done'); }
+  if(cal){ cal.textContent=(c&&c.short)?('= '+c.short):('= total 0 '+(t.unit||'lbs')); cal.classList.remove('done'); }
+  supUpdWarn(idx, t, c);
   updateSaveBar();
 }
 function supGayInput(idx,i){ supGaySync(idx); }

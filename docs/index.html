@@ -698,7 +698,7 @@ var API_SECRET = '';
 
 /* Bump this on every page change — the number shows in the bottom-right corner so you can
    confirm a reload actually picked up the latest page (an old cached page has no tag). */
-var APP_VERSION = 'v79';
+var APP_VERSION = 'v80';
 
 /* Call a backend function: callApi('fn', [arg1, arg2]) -> Promise(result). */
 function callApi(fn, args){
@@ -1442,7 +1442,7 @@ function addManual(code){
 function toggleSearch(){ $('searchWrap').classList.contains('hide')?openSearch():closeSearch(); }
 function openSearch(){ $('searchWrap').classList.remove('hide'); $('searchToggle').textContent='Hide search'; setTimeout(()=>$('searchInput').focus(),40); }
 function openSearchWith(q){ openSearch(); $('searchInput').value=q; runSearch(); }
-function closeSearch(){ const inp=$('searchInput'); if(inp) inp.blur(); tkHide(); $('searchWrap').classList.add('hide'); $('searchToggle').textContent='Search by description'; $('results').classList.add('hide'); if(inp) inp.value=''; $('searchX').classList.remove('show'); }
+function closeSearch(){ const inp=$('searchInput'); if(inp) inp.blur(); kbLock=false; tkHide(); $('searchWrap').classList.add('hide'); $('searchToggle').textContent='Search by description'; $('results').classList.add('hide'); if(inp) inp.value=''; $('searchX').classList.remove('show'); }
 function clearSearch(){ const inp=$('searchInput'); inp.value=''; $('results').classList.add('hide'); $('searchX').classList.remove('show'); inp.focus(); }
 $('searchInput').addEventListener('input', runSearch);
 function runSearch(){
@@ -2099,11 +2099,17 @@ function scrollFieldUp(el, anchorSel){
 var activeNumField='f_full';
 var _kpFresh=false;   // when true, the next digit replaces the field (used for the row # box)
 function kpIsField(id){ return id==='f_per'||id==='f_full'||id==='f_extra'||id==='f_loc'||id==='rowNum'; }
+/* When true, the docked pads stay put and ignore tap-away / blur. Set while a count-card field or the
+   search box is active, so the keyboard never disappears mid-entry. Cleared on Save, Cancel, mode
+   switch, leaving search, or tapping the Scan box. Switching between the two pads is explicit
+   (kpShow calls tkHide and vice-versa), so the lock doesn't block that. */
+var kbLock=false;
 function kpShow(){ tkHide(); $('cardKeypad').classList.add('show'); $('cardKeypad').setAttribute('aria-hidden','false'); document.body.classList.add('kp-open'); }
 function kpHide(){ kpBackStop(); $('cardKeypad').classList.remove('show'); $('cardKeypad').setAttribute('aria-hidden','true'); document.body.classList.remove('kp-open'); }
 function kpBind(id){
   if(!kpIsField(id)) return;
   activeNumField=id;
+  kbLock = (id!=='rowNum');      // count boxes stay locked open; the row-jump box keeps old behavior
   _kpFresh = (id==='rowNum');   // start fresh: first digit replaces the old row number
   const l=$('kpField'); if(l){ l.textContent=({f_per:'Per unit',f_full:'Full',f_extra:'Extra',f_loc:'Location #',rowNum:'Row #'})[id]; }
   kpShow();
@@ -2114,6 +2120,7 @@ function kpBind(id){
 function kpOnBlur(){
   setTimeout(function(){
     if(!$('calcModal').classList.contains('hide')) return;   // calculator is open — leave the pad be
+    if(kbLock) return;                                       // locked open during count entry
     const a=document.activeElement;
     if(a && (kpIsField(a.id) || $('cardKeypad').contains(a))) return;
     kpHide();
@@ -2123,6 +2130,7 @@ document.addEventListener('focusin', function(ev){
   const a=ev.target;
   if(!$('cardKeypad').classList.contains('show')) return;
   if(!$('calcModal').classList.contains('hide')) return;     // calculator is open — leave the pad be
+  if(kbLock) return;                                         // locked open — keep the numeric pad up
   if(a && (kpIsField(a.id) || $('cardKeypad').contains(a))) return;
   kpHide();
 });
@@ -2187,12 +2195,14 @@ function tkHide(){ tkBackStop(); $('textKeypad').classList.remove('show'); $('te
 function tkBind(id){
   if(!tkIsField(id)) return;
   activeTextField=id;
+  kbLock = (id!=='modalInput');   // card text + search stay locked open; the value prompt keeps old behavior
   const l=$('tkField'); if(l){ l.textContent=({modalInput:'value',f_desc:'Description',f_weight:'Weight',f_type:'Type',searchInput:'Search'})[id]||'value'; }
   tkShow();
   const el=$(id); if(el){ setTimeout(()=>scrollFieldUp(el),40); }
 }
 function tkOnBlur(){
   setTimeout(function(){
+    if(kbLock) return;                                        // locked open (search / card text)
     const a=document.activeElement;
     if(a && (tkIsField(a.id) || $('textKeypad').contains(a))) return;
     tkHide();
@@ -2202,6 +2212,8 @@ document.addEventListener('focusin', function(ev){
   if(!$('textKeypad').classList.contains('show')) return;
   const a=ev.target;
   if(a && (tkIsField(a.id) || $('textKeypad').contains(a))) return;
+  if(a && a.id==='scanInput'){ kbLock=false; tkHide(); return; }  // tapping the Scan box closes the search keyboard
+  if(kbLock) return;                                              // otherwise stay locked open
   tkHide();
 });
 function tkTap(e,ch){
@@ -2217,7 +2229,7 @@ function tkBackStop(){ clearTimeout(tkRepeatTO); clearInterval(tkRepeatIV); tkRe
 function tkDone(e){
   if(e){ e.preventDefault(); }
   if(activeTextField==='modalInput'){ const ok=$('modalOk'); if(ok) ok.click(); return; }
-  if(activeTextField==='searchInput'){ const el=$('searchInput'); if(el) el.blur(); tkHide(); return; }
+  if(activeTextField==='searchInput'){ return; }   // search keyboard only closes via Scan box or picking a product
   tkAdvance();
 }
 // Done on a card text field moves to the next present text field, then hands off to the number
@@ -2236,7 +2248,7 @@ function cardEnter(e, target){
   if(target==='save'){ saveEntry(); return; }
   nextField(target);
 }
-function clearCardOnly(){ kpHide(); $('cardMount').innerHTML=''; state.current=null; state.editIndex=null;
+function clearCardOnly(){ kbLock=false; kpHide(); tkHide(); $('cardMount').innerHTML=''; state.current=null; state.editIndex=null;
   if(state.mode==='row'){ const rp=$('rowPanel'); if(rp) rp.classList.remove('hide'); } }
 function clearCard(){ clearCardOnly(); $('notFound').classList.add('hide'); if(state.mode==='row'){ renderRowPanel(); } else { focusScan(); } }
 

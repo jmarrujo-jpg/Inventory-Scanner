@@ -87,6 +87,8 @@ input,select{font-family:inherit;font-size:16px}
 .bldgbar .bldglbl{font-size:12px;font-weight:700;color:var(--ink-soft);letter-spacing:.02em;text-transform:uppercase;white-space:nowrap}
 .bldgbar select{flex:1;height:48px;border:1.5px solid var(--line);border-radius:10px;background:#fff;padding:0 12px;font-size:16px;font-weight:700;color:var(--dept)}
 .bldgbar select:focus{border-color:var(--dept);outline:none}
+.bldgbar .bldgnum{width:92px;height:48px;border:1.5px solid var(--line);border-radius:10px;background:#fff;padding:0 12px;font-size:16px;font-weight:800;color:var(--dept);text-align:center}
+.bldgbar .bldgnum:focus{border-color:var(--dept);outline:none}
 
 /* scan bay - signature element */
 .scanbay{background:var(--panel);border:1px solid var(--line);border-radius:var(--radius);padding:16px;
@@ -476,8 +478,10 @@ html.modal-lock body{position:fixed;left:0;right:0;width:100%;overflow:hidden}
       </div>
 
       <div class="bldgbar" id="bldgBar">
-        <span class="bldglbl">Building you're in</span>
+        <span class="bldglbl">Location you're in</span>
         <select id="topBldg" onchange="setBuilding(this.value)"></select>
+        <input id="topLoc" class="mono bldgnum" inputmode="none" readonly placeholder="number"
+               onfocus="kpBind('topLoc')" onblur="kpOnBlur()" oninput="onTopLoc()">
       </div>
 
       <div class="scanbay" id="scanbay">
@@ -506,7 +510,7 @@ html.modal-lock body{position:fixed;left:0;right:0;width:100%;overflow:hidden}
           <label>Row / location you're counting</label>
           <div class="locrow">
             <select id="rowBldg" onchange="onRowBldg(this.value)"></select>
-            <input id="rowNum" class="mono" inputmode="none" readonly placeholder="number" onfocus="kpBind('rowNum')" onblur="kpOnBlur()">
+            <input id="rowNum" class="mono" inputmode="none" readonly placeholder="number" onfocus="kpBind('rowNum')" onblur="kpOnBlur()" oninput="onRowNum()">
             <button type="button" class="btn primary rowgo" onclick="loadRow()">Show</button>
           </div>
           <div class="rowstep">
@@ -698,7 +702,7 @@ var API_SECRET = '';
 
 /* Bump this on every page change — the number shows in the bottom-right corner so you can
    confirm a reload actually picked up the latest page (an old cached page has no tag). */
-var APP_VERSION = 'v80';
+var APP_VERSION = 'v81';
 
 /* Call a backend function: callApi('fn', [arg1, arg2]) -> Promise(result). */
 function callApi(fn, args){
@@ -719,7 +723,7 @@ var DATA = {ends:[],cans:[],plastics:[]};
 </script>
 <script>
 /* ====== APP LOGIC ====== */
-const state = { dept:null, metalKind:'ends', entries:{metals:[], plastics:[]}, current:null, building:'', mode:'scan' };
+const state = { dept:null, metalKind:'ends', entries:{metals:[], plastics:[]}, current:null, building:'', locNum:'', mode:'scan' };
 var rowSkips = {};   // per-location products the user marked "not here" in Count-by-Row (transient)
 
 /* Buildings for the Location box: pick a building, type just the number.
@@ -763,6 +767,24 @@ function onCardBldg(v){
   updateLogHint();   // building changed → refresh the "last counted here" hint
 }
 
+/* ---- universal "location you're in" (building is already shared; this shares the NUMBER too) ----
+   Set the location once and it carries to every new count and to the row picker, so you don't
+   re-type it per item — which is where dropped digits (M-111 → M-11) came from. Any of the three
+   number boxes (top bar, card, row picker) updates the shared value and the others follow. */
+function setLocNum(digits, srcId){
+  state.locNum = (digits||'').replace(/\D/g,'');
+  persistSession();
+  ['topLoc','rowNum','f_loc'].forEach(function(id){
+    if(id===srcId) return;
+    if(id==='f_loc' && state.editIndex!=null) return;   // don't disturb an entry being edited
+    const el=$(id); if(el && (el.value||'')!==state.locNum) el.value=state.locNum;
+  });
+  updateLogHint();   // safe no-op when no card is open
+}
+function onTopLoc(){ const el=$('topLoc'); setLocNum(el?el.value:'', 'topLoc'); }
+function onCardLoc(){ if(state.editIndex==null){ const el=$('f_loc'); setLocNum(el?el.value:'', 'f_loc'); } updateLogHint(); }
+function onRowNum(){ const el=$('rowNum'); setLocNum(el?el.value:'', 'rowNum'); }
+
 /* ---- session persistence: entries survive closing/reopening the app ---- */
 const SESSION_KEY = 'invCountSession_v1';
 function persistSession(){
@@ -772,7 +794,8 @@ function persistSession(){
       counter: $('counterName') ? $('counterName').value : '',
       lastDept: state.dept,
       metalKind: state.metalKind,
-      building: state.building
+      building: state.building,
+      locNum: state.locNum
     }));
   }catch(e){ /* storage disabled/full — just skip persisting */ }
 }
@@ -786,6 +809,7 @@ function loadSession(){
     }
     if(s.metalKind) state.metalKind = s.metalKind;
     if(s.building) state.building = s.building;
+    if(typeof s.locNum==='string') state.locNum = s.locNum;
     return s;
   }catch(e){ return null; }
 }
@@ -859,6 +883,7 @@ function openDept(dept){
   $('landing').style.display='none';
   $('count').style.display='flex';
   const tb=$('topBldg'); if(tb) tb.value=state.building||'';
+  const tl=$('topLoc'); if(tl) tl.value=state.locNum||'';
   state.mode='scan';
   clearCard(); renderRecent(); updateHints(); syncMode();
   refreshEntries();   // pull the authoritative list from the sheet
@@ -1670,7 +1695,10 @@ function syncMode(){
   const sb=$('scanbay'); if(sb) sb.style.display=m==='scan'?'':'none';
   const bb=$('bldgBar'); if(bb) bb.style.display=m==='scan'?'':'none';
   const rp=$('rowPanel'); if(rp) rp.classList.toggle('hide', m!=='row');
-  if(m==='row'){ fillRowBuildings(); renderRowPanel(); }
+  if(m==='row'){ fillRowBuildings();
+    const rb=$('rowBldg'); if(rb) rb.value=state.building||'';
+    const rn=$('rowNum'); if(rn) rn.value=state.locNum||'';   // carry the shared location into the row picker
+    renderRowPanel(); }
 }
 function loadRow(){ kpHide(); renderRowPanel(); }
 // Step the row number up/down by one and reload — walk locations without retyping.
@@ -1680,6 +1708,7 @@ function rowStep(delta){
   let n = p.num!=='' ? Number(p.num) : 0;
   n = Math.max(1, n+delta);
   const el=$('rowNum'); if(el){ el.value=String(n); }
+  setLocNum(String(n), 'rowNum');   // keep the shared location in step
   _kpFresh=false; kpHide();
   renderRowPanel();
 }
@@ -1813,6 +1842,7 @@ function rowSkip(i){ const loc=composeRowLoc(); rowSkips[rowSkipKey(loc,i)]=1; r
 function rowAddProduct(){
   const loc=composeRowLoc(); const p=parseLoc(loc);
   if(p.bldg){ state.building=p.bldg; const tb=$('topBldg'); if(tb) tb.value=p.bldg; }
+  if(p.num!==''){ state.locNum=p.num; }   // carry the row's location into Scan mode
   setMode('scan');
   toast(p.num?('Scan/search the product to add at '+esc(loc)):'Scan or search the product to add');
 }
@@ -1991,7 +2021,7 @@ function selectItem(it, edit){
 
   // Count-by-row can pre-fill a new card with the last count's location + full/extra split.
   const pre = (!ed && it.__prefill) ? it.__prefill : null;
-  const locParts = ed ? parseLoc(ed.loc) : (pre&&pre.loc ? parseLoc(pre.loc) : { bldg: state.building, num:'' });
+  const locParts = ed ? parseLoc(ed.loc) : (pre&&pre.loc ? parseLoc(pre.loc) : { bldg: state.building, num: state.locNum||'' });
   const vBldg = locParts.bldg;   // editing shows the entry's building; a new scan uses the current one
   const vNum  = esc(locParts.num || '');
   const bldgOpts = ['<option value="">—</option>'].concat(
@@ -2039,7 +2069,7 @@ function selectItem(it, edit){
         <div class="fld full"><label>Location — building + number</label>
           <div class="locrow">
             <select id="f_bldg" onchange="onCardBldg(this.value)">${bldgOpts}</select>
-            <input id="f_loc" class="mono" inputmode="none" readonly enterkeyhint="done" placeholder="number" value="${vNum}" onfocus="kpBind('f_loc')" onblur="kpOnBlur()" oninput="updateLogHint()" onkeydown="cardEnter(event,'save')">
+            <input id="f_loc" class="mono" inputmode="none" readonly enterkeyhint="done" placeholder="number" value="${vNum}" onfocus="kpBind('f_loc')" onblur="kpOnBlur()" oninput="onCardLoc()" onkeydown="cardEnter(event,'save')">
           </div></div>
 
         <div class="fld full loghint" id="logHint" hidden></div>
@@ -2098,7 +2128,7 @@ function scrollFieldUp(el, anchorSel){
 // single pointerdown (no mouse+touch double-firing) and edit whichever box is active.
 var activeNumField='f_full';
 var _kpFresh=false;   // when true, the next digit replaces the field (used for the row # box)
-function kpIsField(id){ return id==='f_per'||id==='f_full'||id==='f_extra'||id==='f_loc'||id==='rowNum'; }
+function kpIsField(id){ return id==='f_per'||id==='f_full'||id==='f_extra'||id==='f_loc'||id==='rowNum'||id==='topLoc'; }
 /* When true, the docked pads stay put and ignore tap-away / blur. Set while a count-card field or the
    search box is active, so the keyboard never disappears mid-entry. Cleared on Save, Cancel, mode
    switch, leaving search, or tapping the Scan box. Switching between the two pads is explicit
@@ -2109,9 +2139,9 @@ function kpHide(){ kpBackStop(); $('cardKeypad').classList.remove('show'); $('ca
 function kpBind(id){
   if(!kpIsField(id)) return;
   activeNumField=id;
-  kbLock = (id!=='rowNum');      // count boxes stay locked open; the row-jump box keeps old behavior
-  _kpFresh = (id==='rowNum');   // start fresh: first digit replaces the old row number
-  const l=$('kpField'); if(l){ l.textContent=({f_per:'Per unit',f_full:'Full',f_extra:'Extra',f_loc:'Location #',rowNum:'Row #'})[id]; }
+  kbLock = (id!=='rowNum' && id!=='topLoc');            // count boxes stay locked open; location/row boxes don't
+  _kpFresh = (id==='rowNum'||id==='topLoc'||id==='f_loc'); // start fresh: first digit replaces the carried-over number
+  const l=$('kpField'); if(l){ l.textContent=({f_per:'Per unit',f_full:'Full',f_extra:'Extra',f_loc:'Location #',rowNum:'Row #',topLoc:'Location #'})[id]; }
   kpShow();
   const el=$(id); if(el){ setTimeout(()=>scrollFieldUp(el, id==='f_loc'?'.total-strip':null),40); } // keep it above the pad
 }
@@ -2312,6 +2342,16 @@ async function saveEntry(){
   const per=asNum($('f_per').value), full=asNum($('f_full').value), extra=asNum($('f_extra').value);
   const total=Math.round(full*per+extra);
   if(total<=0){ toast('Enter a count greater than 0','err'); _saving=false; return; }
+  // Must have a location (building + number) before saving.
+  const bNow = ($('f_bldg')&&$('f_bldg').value||'').trim();
+  const nNow = ($('f_loc')&&$('f_loc').value||'').replace(/\D/g,'');
+  if(!bNow || !nNow){
+    toast(!bNow && !nNow ? 'Enter a location before saving' : (!bNow ? 'Pick a building before saving' : 'Enter a location number before saving'),'err');
+    _saving=false;
+    const f = !bNow ? $('f_bldg') : $('f_loc');
+    if(f){ f.focus(); if(f!==$('f_bldg')){ if(f.select) f.select(); kpBind('f_loc'); } }
+    return;
+  }
   const warn = locWarning(composeLoc());
   if(warn){
     const ok = await confirmLoc(warn);

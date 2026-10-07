@@ -702,7 +702,7 @@ var API_SECRET = '';
 
 /* Bump this on every page change — the number shows in the bottom-right corner so you can
    confirm a reload actually picked up the latest page (an old cached page has no tag). */
-var APP_VERSION = 'v81';
+var APP_VERSION = 'v82';
 
 /* Call a backend function: callApi('fn', [arg1, arg2]) -> Promise(result). */
 function callApi(fn, args){
@@ -779,10 +779,10 @@ function setLocNum(digits, srcId){
     if(id==='f_loc' && state.editIndex!=null) return;   // don't disturb an entry being edited
     const el=$(id); if(el && (el.value||'')!==state.locNum) el.value=state.locNum;
   });
-  updateLogHint();   // safe no-op when no card is open
+  scheduleLogHint();   // settle, then refresh (safe no-op when no card is open)
 }
 function onTopLoc(){ const el=$('topLoc'); setLocNum(el?el.value:'', 'topLoc'); }
-function onCardLoc(){ if(state.editIndex==null){ const el=$('f_loc'); setLocNum(el?el.value:'', 'f_loc'); } updateLogHint(); }
+function onCardLoc(){ if(state.editIndex==null){ const el=$('f_loc'); setLocNum(el?el.value:'', 'f_loc'); } else { scheduleLogHint(); } }
 function onRowNum(){ const el=$('rowNum'); setLocNum(el?el.value:'', 'rowNum'); }
 
 /* ---- session persistence: entries survive closing/reopening the app ---- */
@@ -1623,6 +1623,15 @@ function logForLoc(loc){
   const rows=(LOGIDX[dep]||{})[logLocKey(loc)]||[];
   if(state.dept==='metals'){ const kind=state.metalKind==='cans'?'Cans':'Ends'; return rows.filter(function(r){ return !r.kind || norm(r.kind)===norm(kind); }); }
   return rows;
+}
+// While the location NUMBER is being typed, hide the "last counted here" line and only recompute
+// once typing settles. Otherwise the line flashes matches for the half-typed location — e.g. while
+// typing M-111 it would briefly show M-11's history (which exists) before landing on M-111 (empty).
+var _logHintTO=null;
+function scheduleLogHint(){
+  const box=$('logHint'); if(box) box.hidden=true;   // hide instantly while the number is mid-entry
+  clearTimeout(_logHintTO);
+  _logHintTO=setTimeout(updateLogHint, 350);
 }
 // The "last counted here" line on the card. Updates live as location / counts change.
 function updateLogHint(){

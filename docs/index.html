@@ -702,20 +702,30 @@ var API_SECRET = '';
 
 /* Bump this on every page change — the number shows in the bottom-right corner so you can
    confirm a reload actually picked up the latest page (an old cached page has no tag). */
-var APP_VERSION = 'v82';
+var APP_VERSION = 'v83';
 
 /* Call a backend function: callApi('fn', [arg1, arg2]) -> Promise(result). */
 function callApi(fn, args){
+  // Abort after 20s so a stalled request fails cleanly instead of hanging forever (which used to
+  // leave the save locked until an app restart). Callers' .catch handles the rejection.
+  const ctrl = (typeof AbortController!=='undefined') ? new AbortController() : null;
+  const to = ctrl ? setTimeout(function(){ try{ ctrl.abort(); }catch(_){ } }, 20000) : null;
   return fetch(API_URL, {
     method:'POST',
     headers:{'Content-Type':'application/json'},
-    body:JSON.stringify({fn:fn, args:args||[], secret:API_SECRET})
+    body:JSON.stringify({fn:fn, args:args||[], secret:API_SECRET}),
+    signal: ctrl ? ctrl.signal : undefined
   })
   .then(function(r){ return r.json(); })
   .then(function(j){
     if(!j || j.ok!==true) throw new Error((j && j.error) ? j.error : 'Request failed');
     return j.result;
-  });
+  })
+  .catch(function(err){
+    if(err && (err.name==='AbortError' || err.code===20)) throw new Error('Timed out — check your connection and try again');
+    throw err;
+  })
+  .finally(function(){ if(to) clearTimeout(to); });
 }
 
 /* ====== DATA loaded live from the Google Sheet lookup tabs ====== */
@@ -1822,7 +1832,7 @@ function rowEntryFor(r, loc, totalUnits){
 var _rowSaving=false;
 function appendCounted(entry){
   return callApi('appendEntry',[entry, state.dept]).then(function(){
-    activeEntries().unshift(entry); persistSession(); renderRecent(); refreshEntries(); return true;
+    activeEntries().unshift(entry); persistSession(); renderRecent(); scheduleRefresh(); return true;
   });
 }
 // One-tap: the last count is still accurate — record it as this count.
@@ -1987,9 +1997,17 @@ function askValue(title, hint){
 }
 
 /* ---- edit / delete an existing entry ---- */
-function editEntry(i){
-  const e = activeEntries()[i];
+async function editEntry(i){
+  let e = activeEntries()[i];
   if(!e) return;
+  // A just-saved entry may not have its real sheet row yet (the refresh is debounced). Flush it now
+  // so edit/delete target the right row, then re-find the entry (the list may have re-sorted).
+  if(e.__row==null){
+    const id=entryIdentity(e);
+    try{ await flushRefresh(); }catch(_){ }
+    const j=activeEntries().findIndex(function(x){ return entryIdentity(x)===id; });
+    if(j>=0){ i=j; e=activeEntries()[j]; }
+  }
   $('notFound').classList.add('hide');
   closeSearch();
   if(state.dept==='metals') setMetalKind(e.category==='Ends'?'ends':'cans'); // show the right fields
@@ -2405,24 +2423,31 @@ async function saveEntry(){
       if(state.mode==='row'){ renderRowPanel(); } else { focusScan(); }
       // Re-read from the sheet so the just-added row gets its real tab/row reference. Without this
       // the optimistic entry has no __tab/__row, so editing it immediately failed until an app
-      // reload (which re-fetched with real references). This makes re-entry work right away.
-      refreshEntries();
+      // reload (which re-fetched with real references). Debounced so a fast run of saves does ONE
+      // re-read a few seconds after you stop, instead of ~3 tab reads per save (which could trip
+      // Google's per-minute request limit). editEntry flushes it on demand before opening a card.
+      scheduleRefresh();
     })
     .catch(function(err){
       _saving=false;
       if(btn){ btn.disabled=false; btn.textContent=btnLabel||'\u2713 Save entry'; }
       toast('Save failed — try again','err');
       console.error(err);
+    })
+    .finally(function(){
+      // Belt-and-suspenders: never leave the save locked, even if a handler above threw.
+      _saving=false;
+      const b=$('f_save'); if(b && b.disabled){ b.disabled=false; if(b.textContent==='Saving…') b.textContent=btnLabel||'✓ Save entry'; }
     });
 }
 
 /* ---- load the counted list from the sheet (the source of truth) ---- */
-var _refreshing=false;
+var _refreshing=false, _refreshInflight=null, _refreshTO=null;
 function refreshEntries(){
-  if(_refreshing) return Promise.resolve();
+  if(_refreshing) return _refreshInflight || Promise.resolve();   // one in flight → hand back its promise
   _refreshing=true;
   const rb=$('refreshBtn'); if(rb) rb.textContent='Refreshing…';
-  return callApi('getEntries', []).then(function(res){
+  _refreshInflight = callApi('getEntries', []).then(function(res){
     const rev = a => Array.isArray(a) ? a.slice().reverse() : [];   // sheet is oldest-first → newest-first
     const cans=rev(res.cans), ends=rev(res.ends);
     state.entries.plastics = rev(res.plastics);
@@ -2434,10 +2459,18 @@ function refreshEntries(){
     if(state.dept) renderRecent();    // fall back to the cached list
     toast('Couldn’t reach the sheet — showing cached list','err');
   }).finally(function(){
-    _refreshing=false;
+    _refreshing=false; _refreshInflight=null;
     const b=$('refreshBtn'); if(b) b.textContent='Refresh';
   });
+  return _refreshInflight;
 }
+// Coalesce post-save re-reads: many quick saves collapse into ONE refresh a few seconds after you
+// stop, so a fast count doesn't fire ~3 tab reads per save at Google's API.
+function scheduleRefresh(){ clearTimeout(_refreshTO); _refreshTO=setTimeout(function(){ _refreshTO=null; refreshEntries(); }, 4000); }
+// Run any pending/in-flight refresh now and wait for it (used before editing a just-saved row).
+function flushRefresh(){ if(_refreshTO){ clearTimeout(_refreshTO); _refreshTO=null; } return refreshEntries(); }
+// Stable identity so we can re-find an entry after a refresh re-reads/re-sorts the list.
+function entryIdentity(e){ return [e.ts, norm(e.code), norm(e.loc), String(e.total)].join('\u0001'); }
 
 /* ---- recent list + export ---- */
 function renderRecent(){

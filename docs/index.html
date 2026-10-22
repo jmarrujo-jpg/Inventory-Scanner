@@ -482,6 +482,7 @@ html.modal-lock body{position:fixed;left:0;right:0;width:100%;overflow:hidden}
         <select id="topBldg" onchange="setBuilding(this.value)"></select>
         <input id="topLoc" class="mono bldgnum" inputmode="none" readonly placeholder="number"
                onfocus="kpBind('topLoc')" onblur="kpOnBlur()" oninput="onTopLoc()">
+        <button type="button" class="mapbtn" id="mapBtn" onclick="openMap()">🗺 Map</button>
       </div>
 
       <div class="scanbay" id="scanbay">
@@ -692,6 +693,52 @@ html.modal-lock body{position:fixed;left:0;right:0;width:100%;overflow:hidden}
   <div class="tk-grid" id="tkGrid"></div>
 </div>
 
+<!-- Full-screen warehouse map: tap a bin to set it as your location. Map geometry lives in
+     mapdata.js (loaded below) as the global MAP_DATA. -->
+<style>
+.mapbtn{height:48px;padding:0 14px;border:2px solid var(--line);background:var(--panel);border-radius:12px;
+  font-family:'Archivo',sans-serif;font-weight:800;font-size:14px;color:var(--ink);white-space:nowrap;cursor:pointer}
+.mapbtn:active{transform:translateY(1px)}
+.mapov{position:fixed;inset:0;z-index:9000;background:var(--paper);display:flex;flex-direction:column}
+.mapov.hide{display:none}
+.mapbar{display:flex;align-items:center;gap:10px;padding:12px 14px;background:var(--panel);border-bottom:1px solid var(--line)}
+.mapbar strong{font-family:'Archivo',sans-serif;font-size:17px;font-weight:900}
+.mapsel{font-family:'JetBrains Mono',monospace;font-weight:700;color:var(--ok);margin-left:2px;font-size:14px}
+.mapx{margin-left:auto;width:44px;height:44px;border:none;background:transparent;font-size:30px;line-height:1;color:var(--ink-soft);cursor:pointer}
+.maptabs{display:flex;gap:7px;overflow-x:auto;padding:10px 14px;background:var(--panel);border-bottom:1px solid var(--line);-webkit-overflow-scrolling:touch}
+.maptabs button{flex:0 0 auto;height:40px;padding:0 14px;border:2px solid var(--line);background:var(--panel);
+  border-radius:20px;font-family:'Archivo',sans-serif;font-weight:800;font-size:13px;color:var(--ink-soft);white-space:nowrap;cursor:pointer}
+.maptabs button.on{background:var(--dept);border-color:var(--dept);color:#fff}
+.mapwrap{position:relative;flex:1;min-height:0}
+.mapscroll{position:absolute;inset:0;overflow:auto;-webkit-overflow-scrolling:touch;background:#fff;touch-action:pan-x pan-y}
+#mapStage{padding:10px}
+#mapStage svg{display:block;background:#fff}
+#mapStage svg text{font-family:'JetBrains Mono',monospace;pointer-events:none}
+.mapzoom{position:absolute;right:12px;bottom:12px;display:flex;flex-direction:column;gap:8px}
+.mapzoom button{width:48px;height:48px;border:2px solid var(--line);background:rgba(255,255,255,.95);border-radius:12px;
+  font-size:22px;font-weight:800;color:var(--ink);cursor:pointer;box-shadow:0 2px 8px rgba(0,0,0,.12)}
+.maphint{padding:10px 14px;background:var(--panel);border-top:1px solid var(--line);font-size:13px;color:var(--ink-soft);text-align:center}
+</style>
+
+<div class="mapov hide" id="mapOverlay" aria-hidden="true">
+  <div class="mapbar">
+    <strong>Warehouse map</strong>
+    <span class="mapsel" id="mapSel"></span>
+    <button type="button" class="mapx" onclick="closeMap()" aria-label="Close map">×</button>
+  </div>
+  <div class="maptabs" id="mapTabs"></div>
+  <div class="mapwrap">
+    <div class="mapscroll" id="mapScroll"><div id="mapStage"></div></div>
+    <div class="mapzoom">
+      <button type="button" onclick="mapZoom(1)" aria-label="Zoom in">+</button>
+      <button type="button" onclick="mapZoom(0)" aria-label="Fit to screen">⤢</button>
+      <button type="button" onclick="mapZoom(-1)" aria-label="Zoom out">−</button>
+    </div>
+  </div>
+  <div class="maphint" id="mapHint">Tap a bin to set it as the location you're counting in.</div>
+</div>
+
+<script src="mapdata.js"></script>
 <script>
 /* ====== Backend config ======
    This page is static (GitHub Pages). It talks to a Cloudflare Worker that reads/writes the
@@ -702,7 +749,7 @@ var API_SECRET = '';
 
 /* Bump this on every page change — the number shows in the bottom-right corner so you can
    confirm a reload actually picked up the latest page (an old cached page has no tag). */
-var APP_VERSION = 'v83';
+var APP_VERSION = 'v84';
 
 /* Call a backend function: callApi('fn', [arg1, arg2]) -> Promise(result). */
 function callApi(fn, args){
@@ -2572,6 +2619,130 @@ function toast(msg,type){
   window.addEventListener('orientationchange', schedule);
   window.addEventListener('resize', schedule);
 })();
+
+/* ===================== Warehouse map =====================
+   MAP_DATA (from mapdata.js) holds per-area floor plans. Each marker is a bin whose id is the
+   exact location code the app uses (e.g. "M-145", "S-032"). Tapping a bin sets it as the universal
+   "location you're in". The map is view-only otherwise; your current bin is outlined and bins you've
+   already counted this session get a green tint. */
+var MAP_VIEWS = [
+  ['main','Main · all'], ['shipping','Shipping'], ['plastics','Plastics'], ['metals','Metals'],
+  ['hitachi','Hitachi'], ['monarch','Monarch E'], ['monarch_west','Monarch W'], ['wyle','Wyle']
+];
+// which area to open first, based on the building you're in
+var BLDG_TO_VIEW = { M:'monarch', P:'plastics', MT:'metals', S:'shipping', H:'hitachi', W:'wyle' };
+var _mapKey = 'main', _mapZoom = 1;
+
+function hasMapData(){ return (typeof MAP_DATA !== 'undefined') && MAP_DATA && Object.keys(MAP_DATA).length; }
+
+// the location you're currently in, as a marker id like "M-145" (or '' if not set)
+function currentLocId(){
+  var n = (state.locNum||'').replace(/\D/g,'');
+  if(!state.building || !n) return '';
+  return state.building + '-' + n.padStart(3,'0');
+}
+// set of bin ids counted this session (both departments), normalized
+function countedLocSet(){
+  var s = {};
+  ['metals','plastics'].forEach(function(dep){
+    (state.entries[dep]||[]).forEach(function(e){ if(e && e.loc) s[norm(e.loc)] = 1; });
+  });
+  return s;
+}
+
+function openMap(){
+  if(!hasMapData()){ toast('Map data not loaded yet','err'); return; }
+  // build the area tabs once
+  var tabs = $('mapTabs');
+  tabs.innerHTML = MAP_VIEWS.filter(function(v){ return MAP_DATA[v[0]]; })
+    .map(function(v){ return '<button type="button" data-k="'+v[0]+'" onclick="selectMapView(\''+v[0]+'\')">'+esc(v[1])+'</button>'; }).join('');
+  // open on the area matching the building you're in, else main
+  _mapKey = (BLDG_TO_VIEW[state.building] && MAP_DATA[BLDG_TO_VIEW[state.building]]) ? BLDG_TO_VIEW[state.building] : 'main';
+  _mapZoom = 1;
+  var ov = $('mapOverlay'); ov.classList.remove('hide'); ov.setAttribute('aria-hidden','false');
+  renderMap();
+}
+function closeMap(){ var ov=$('mapOverlay'); ov.classList.add('hide'); ov.setAttribute('aria-hidden','true'); }
+
+function selectMapView(k){ if(!MAP_DATA[k]) return; _mapKey=k; _mapZoom=1; renderMap(); }
+
+function mapZoom(dir){
+  if(dir===0) _mapZoom=1;
+  else if(dir>0) _mapZoom = Math.min(_mapZoom*1.6, 10);
+  else _mapZoom = Math.max(_mapZoom/1.6, 1);
+  sizeMapSvg();
+}
+// width the svg should be drawn at (fit-to-container at zoom 1, bigger as you zoom in)
+function sizeMapSvg(){
+  var v = MAP_DATA[_mapKey]; if(!v) return;
+  var svg = $('mapStage').querySelector('svg'); if(!svg) return;
+  var ex = v.extent, W = ex.maxX-ex.minX, H = ex.maxY-ex.minY;
+  var avail = Math.max(260, $('mapScroll').clientWidth - 20);
+  var w = avail * _mapZoom;
+  svg.style.width = w+'px';
+  svg.style.height = (w * H / W)+'px';
+}
+
+function mapRect(r, extra){
+  return '<rect x="'+r.x+'" y="'+r.y+'" width="'+r.w+'" height="'+r.h+'" '+(extra||'')+'/>';
+}
+function renderMap(){
+  var v = MAP_DATA[_mapKey]; if(!v){ return; }
+  // active tab
+  Array.prototype.forEach.call($('mapTabs').children, function(b){
+    b.classList.toggle('on', b.getAttribute('data-k')===_mapKey);
+  });
+  var ex = v.extent, W = ex.maxX-ex.minX, H = ex.maxY-ex.minY;
+  var cur = currentLocId(), counted = countedLocSet();
+  var out = [];
+  out.push('<svg viewBox="'+ex.minX+' '+ex.minY+' '+W+' '+H+'" preserveAspectRatio="xMidYMid meet" xmlns="http://www.w3.org/2000/svg">');
+  // building outline
+  out.push('<rect x="'+ex.minX+'" y="'+ex.minY+'" width="'+W+'" height="'+H+'" fill="#fff" stroke="#9aa0a6" stroke-width="24"/>');
+  // structural (walls) — plain fills, no interaction
+  (v.structural||[]).forEach(function(r){ out.push(mapRect(r,'fill="'+(r.fill||'#000')+'"')); });
+  // room labels — soft box + centered text
+  (v.labels||[]).forEach(function(r){
+    out.push(mapRect(r,'fill="'+(r.fill||'#eee')+'" opacity="0.55"'));
+    if(r.t){
+      var fs = Math.max(45, Math.min(r.h*0.4, r.w/(String(r.t).length*0.58)));
+      out.push('<text x="'+(r.x+r.w/2)+'" y="'+(r.y+r.h/2)+'" font-size="'+fs+'" fill="#4a4f57" text-anchor="middle" dominant-baseline="central">'+esc(r.t)+'</text>');
+    }
+  });
+  // bins (markers) — tappable, labelled with their location id
+  (v.markers||[]).forEach(function(r){
+    if(!r.id) return;
+    var isCur = cur && r.id===cur, isDone = counted[norm(r.id)];
+    var stroke = isCur ? '#C0392B' : (isDone ? '#2E7D48' : '#333');
+    var sw = isCur ? 60 : (isDone ? 42 : 14);
+    out.push('<g onclick="mapPick(\''+r.id+'\')" style="cursor:pointer">');
+    out.push(mapRect(r,'fill="'+(r.fill||'#ccc')+'" fill-opacity="'+(isDone?0.95:0.82)+'" stroke="'+stroke+'" stroke-width="'+sw+'"'));
+    var len = r.id.length, fs = Math.max(34, Math.min(r.h*0.62, r.w/(len*0.6)));
+    out.push('<text x="'+(r.x+r.w/2)+'" y="'+(r.y+r.h/2)+'" font-size="'+fs+'" fill="#161A1F" text-anchor="middle" dominant-baseline="central">'+esc(r.id)+'</text>');
+    if(isDone) out.push('<text x="'+(r.x+r.w-30)+'" y="'+(r.y+40)+'" font-size="90" fill="#2E7D48" text-anchor="end">✓</text>');
+    out.push('</g>');
+  });
+  out.push('</svg>');
+  $('mapStage').innerHTML = out.join('');
+  $('mapSel').textContent = cur ? ('In: '+cur) : '';
+  sizeMapSvg();
+}
+
+// tap a bin → make it the universal "location you're in"
+function mapPick(id){
+  var m = /^([A-Za-z]{1,2})-?(\d+)$/.exec(String(id||'').trim());
+  if(!m) return;
+  var letter = m[1].toUpperCase(), digits = m[2];
+  if(BLDG_TO_VIEW[letter]){ setBuilding(letter); }   // only move "building you're in" for real buildings (not R-/MT racks handled below)
+  else { state.building = letter; persistSession(); var tb=$('topBldg'); if(tb) tb.value=letter; }
+  setLocNum(digits, null);
+  toast('Location set: '+letter+'-'+digits.padStart(3,'0'),'ok');
+  renderMap();   // refresh the highlight
+}
+
+window.addEventListener('resize', function(){ if(!$('mapOverlay').classList.contains('hide')) sizeMapSvg(); });
+
+// hide the Map button if the map data file didn't load
+if(!hasMapData()){ var _mb=$('mapBtn'); if(_mb) _mb.style.display='none'; }
 
 /* show the build/version tag */
 $('buildTag').textContent = APP_VERSION;

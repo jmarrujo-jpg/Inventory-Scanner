@@ -29,6 +29,7 @@ const TAB = {
   cansOut: 'Cans',
   endsOut: 'Ends',
   plasticsOut: 'Plastics',
+  lotOut: 'Lot_Counts',
 };
 
 export default {
@@ -81,6 +82,7 @@ async function handle(fn, args, env) {
   switch (fn) {
     case 'getLookups': return getLookups(sheets);
     case 'appendEntry': return appendEntry(sheets, args[0], args[1]);
+    case 'appendLot': return appendLot(sheets, args[0]);
     case 'getEntries': return getEntries(sheets);
     case 'updateEntry': return updateEntry(sheets, args[0]);
     case 'deleteEntry': return deleteEntry(sheets, args[0]);
@@ -270,6 +272,19 @@ async function appendEntry(sheets, e, dept) {
     row = [e.ts, e.counter, e.code, e.desc, e.weight, e.type, e.per, e.full, e.extra, e.loc, e.total];
   }
   await sheets.appendEnsuring(tab, row, header);
+  return true;
+}
+
+/**
+ * Append one lot-pallet count to the Lot_Counts tab. This is a different kind of count: instead of
+ * a quantity, it records how many PALLETS carry a given lot number (date + shift) for a product.
+ * The tab is auto-created with its header row on first use.
+ */
+async function appendLot(sheets, e) {
+  e = e || {};
+  const header = ['Timestamp', 'Counter', 'Department', 'Product ID', 'Description', 'Lot #', 'Location', 'Pallets'];
+  const row = [e.ts, e.counter, e.dept, e.code, e.desc, e.lot, e.loc, e.pallets];
+  await sheets.appendEnsuring(TAB.lotOut, row, header);
   return true;
 }
 

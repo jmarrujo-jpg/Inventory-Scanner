@@ -471,6 +471,7 @@ html.modal-lock body{position:fixed;left:0;right:0;width:100%;overflow:hidden}
       <div class="modeseg" id="modeSeg">
         <button type="button" id="modeScan" class="on" onclick="setMode('scan')">🔍 Scan item</button>
         <button type="button" id="modeRow" onclick="setMode('row')">▦ Count by row</button>
+        <button type="button" id="modeLot" onclick="setMode('lot')">🏷 Lot count</button>
       </div>
       <div class="seg hide" id="metalSeg">
         <button id="segEnds" class="on" onclick="setMetalKind('ends')">Ends</button>
@@ -697,6 +698,10 @@ html.modal-lock body{position:fixed;left:0;right:0;width:100%;overflow:hidden}
 .mapbtn{height:48px;padding:0 14px;border:2px solid var(--line);background:var(--panel);border-radius:12px;
   font-family:'Archivo',sans-serif;font-weight:800;font-size:14px;color:var(--ink);white-space:nowrap;cursor:pointer}
 .mapbtn:active{transform:translateY(1px)}
+.shiftseg{display:flex;gap:8px}
+.shiftseg button{flex:1;height:52px;border:2px solid var(--line);background:var(--panel);border-radius:10px;
+  font-family:'JetBrains Mono',monospace;font-weight:800;font-size:17px;color:var(--ink-soft);cursor:pointer}
+.shiftseg button.on{background:var(--dept);border-color:var(--dept);color:var(--dept-ink)}
 .mapov{position:fixed;inset:0;z-index:9000;background:var(--paper);display:flex;flex-direction:column}
 .mapov.hide{display:none}
 .mapbar{display:flex;align-items:center;gap:10px;padding:12px 14px;background:var(--panel);border-bottom:1px solid var(--line)}
@@ -747,7 +752,7 @@ var API_SECRET = '';
 
 /* Bump this on every page change — the number shows in the bottom-right corner so you can
    confirm a reload actually picked up the latest page (an old cached page has no tag). */
-var APP_VERSION = 'v86';
+var APP_VERSION = 'v87';
 
 /* Call a backend function: callApi('fn', [arg1, arg2]) -> Promise(result). */
 function callApi(fn, args){
@@ -778,7 +783,7 @@ var DATA = {ends:[],cans:[],plastics:[]};
 </script>
 <script>
 /* ====== APP LOGIC ====== */
-const state = { dept:null, metalKind:'ends', entries:{metals:[], plastics:[]}, current:null, building:'', locNum:'', mode:'scan' };
+const state = { dept:null, metalKind:'ends', entries:{metals:[], plastics:[]}, lots:{metals:[], plastics:[]}, current:null, building:'', locNum:'', mode:'scan' };
 var rowSkips = {};   // per-location products the user marked "not here" in Count-by-Row (transient)
 
 /* Buildings for the Location box: pick a building, type just the number.
@@ -846,6 +851,7 @@ function persistSession(){
   try{
     localStorage.setItem(SESSION_KEY, JSON.stringify({
       entries: state.entries,
+      lots: state.lots,
       counter: $('counterName') ? $('counterName').value : '',
       lastDept: state.dept,
       metalKind: state.metalKind,
@@ -861,6 +867,10 @@ function loadSession(){
     if(s.entries){
       state.entries.metals   = Array.isArray(s.entries.metals)   ? s.entries.metals   : [];
       state.entries.plastics = Array.isArray(s.entries.plastics) ? s.entries.plastics : [];
+    }
+    if(s.lots){
+      state.lots.metals   = Array.isArray(s.lots.metals)   ? s.lots.metals   : [];
+      state.lots.plastics = Array.isArray(s.lots.plastics) ? s.lots.plastics : [];
     }
     if(s.metalKind) state.metalKind = s.metalKind;
     if(s.building) state.building = s.building;
@@ -1750,15 +1760,19 @@ function setMode(mode){
   state.mode=mode;
   clearCardOnly(); $('notFound').classList.add('hide'); closeSearch();
   syncMode();
-  if(mode==='scan'){ focusScan(); } else { kpHide(); }
+  if(mode==='scan'||mode==='lot'){ focusScan(); } else { kpHide(); }
 }
 // Reflect the current mode in the UI (buttons, which panel shows). Safe to call anytime.
 function syncMode(){
   const m=state.mode||'scan';
-  const ms=$('modeScan'), mr=$('modeRow'); if(ms) ms.classList.toggle('on',m==='scan'); if(mr) mr.classList.toggle('on',m==='row');
-  const sb=$('scanbay'); if(sb) sb.style.display=m==='scan'?'':'none';
-  const bb=$('bldgBar'); if(bb) bb.style.display=m==='scan'?'':'none';
+  const ms=$('modeScan'), mr=$('modeRow'), ml=$('modeLot');
+  if(ms) ms.classList.toggle('on',m==='scan'); if(mr) mr.classList.toggle('on',m==='row'); if(ml) ml.classList.toggle('on',m==='lot');
+  const showScan = (m==='scan'||m==='lot');
+  const sb=$('scanbay'); if(sb) sb.style.display=showScan?'':'none';
+  const bb=$('bldgBar'); if(bb) bb.style.display=showScan?'':'none';
+  const sl=$('scanLabel'); if(sl) sl.textContent = m==='lot' ? 'Scan or pick the product, then enter its lot' : 'Scan barcode';
   const rp=$('rowPanel'); if(rp) rp.classList.toggle('hide', m!=='row');
+  renderRecent();   // recent list switches between normal counts and lot counts by mode
   if(m==='row'){ fillRowBuildings();
     const rb=$('rowBldg'); if(rb) rb.value=state.building||'';
     const rn=$('rowNum'); if(rn) rn.value=state.locNum||'';   // carry the shared location into the row picker
@@ -2081,6 +2095,7 @@ function selectItem(it, edit){
   $('notFound').classList.add('hide');
   state.current=it;
   state.editIndex = edit ? edit.index : null;
+  if(state.mode==='lot'){ buildLotCard(it); return; }   // lot mode has its own card (lot # + pallets)
   if(state.mode==='row'){ const rp=$('rowPanel'); if(rp) rp.classList.add('hide'); }   // focus on the card while editing
   const ed = state.editIndex!=null ? (activeEntries()[state.editIndex]||null) : null;
   const dept=state.dept, kind=state.metalKind;
@@ -2200,7 +2215,7 @@ function scrollFieldUp(el, anchorSel){
 // single pointerdown (no mouse+touch double-firing) and edit whichever box is active.
 var activeNumField='f_full';
 var _kpFresh=false;   // when true, the next digit replaces the field (used for the row # box)
-function kpIsField(id){ return id==='f_per'||id==='f_full'||id==='f_extra'||id==='f_loc'||id==='rowNum'||id==='topLoc'; }
+function kpIsField(id){ return id==='f_per'||id==='f_full'||id==='f_extra'||id==='f_loc'||id==='rowNum'||id==='topLoc'||id==='f_lotdate'||id==='f_pallets'; }
 /* When true, the docked pads stay put and ignore tap-away / blur. Set while a count-card field or the
    search box is active, so the keyboard never disappears mid-entry. Cleared on Save, Cancel, mode
    switch, leaving search, or tapping the Scan box. Switching between the two pads is explicit
@@ -2213,7 +2228,7 @@ function kpBind(id){
   activeNumField=id;
   kbLock = (id!=='rowNum' && id!=='topLoc');            // count boxes stay locked open; location/row boxes don't
   _kpFresh = (id==='rowNum'||id==='topLoc'||id==='f_loc'); // start fresh: first digit replaces the carried-over number
-  const l=$('kpField'); if(l){ l.textContent=({f_per:'Per unit',f_full:'Full',f_extra:'Extra',f_loc:'Location #',rowNum:'Row #',topLoc:'Location #'})[id]; }
+  const l=$('kpField'); if(l){ l.textContent=({f_per:'Per unit',f_full:'Full',f_extra:'Extra',f_loc:'Location #',rowNum:'Row #',topLoc:'Location #',f_lotdate:'Lot date',f_pallets:'Pallets'})[id]; }
   kpShow();
   const el=$(id); if(el){ setTimeout(()=>scrollFieldUp(el, id==='f_loc'?'.total-strip':null),40); } // keep it above the pad
 }
@@ -2246,6 +2261,12 @@ function kpTap(e,k){
 }
 function kpAdvance(){
   if(activeNumField==='rowNum'){ const el=$('rowNum'); if(el) el.blur(); loadRow(); return; }
+  if(state.mode==='lot'){
+    if(activeNumField==='f_lotdate'){ nextField('f_loc'); }
+    else if(activeNumField==='f_loc'){ nextField('f_pallets'); }
+    else { saveLot(); }
+    return;
+  }
   if(activeNumField==='f_per'){ nextField('f_full'); }
   else if(activeNumField==='f_full'){ nextField('f_extra'); }
   else if(activeNumField==='f_extra'){ nextField('f_loc'); }
@@ -2347,7 +2368,7 @@ function tkAdvance(){
 function cardEnter(e, target){
   if(e.key!=='Enter') return;
   e.preventDefault();
-  if(target==='save'){ saveEntry(); return; }
+  if(target==='save'){ (state.mode==='lot'?saveLot:saveEntry)(); return; }
   nextField(target);
 }
 function clearCardOnly(){ kbLock=false; kpHide(); tkHide(); $('cardMount').innerHTML=''; state.current=null; state.editIndex=null;
@@ -2408,6 +2429,118 @@ function confirmLoc(bodyHtml){
 
 /* ---- save ---- */
 var _saving=false;   // in-flight guard so a double-tap can't save the same count twice
+/* ===================== Lot-pallet count mode =====================
+   A different kind of count: for a chosen product, record how many PALLETS carry a given lot
+   number. The lot number is a date + a shift, e.g. "10/23/26 01". Metals runs one shift (always
+   01); Plastics has three (01/02/03). Saved to the Lot_Counts sheet via appendLot. */
+var lotShift='01';
+function activeLots(){ return state.dept==='plastics'?state.lots.plastics:state.lots.metals; }
+
+function buildLotCard(it){
+  lotShift='01';
+  const isPlastic=(state.dept==='plastics');
+  const codeLabel = isPlastic ? 'Item #' : (state.metalKind==='ends'?'Label Code':'Label Number');
+  const vBldg=state.building, vNum=esc(state.locNum||'');
+  const bldgOpts=['<option value="">—</option>'].concat(
+    BUILDINGS.map(b=>'<option value="'+b[0]+'"'+(b[0]===vBldg?' selected':'')+'>'+b[0]+' · '+b[1]+'</option>')
+  ).join('');
+  const shiftFld = isPlastic
+    ? `<div class="fld full"><label>Shift</label>
+         <div class="shiftseg" id="shiftSeg">
+           <button type="button" class="on" onclick="setLotShift('01',this)">01</button>
+           <button type="button" onclick="setLotShift('02',this)">02</button>
+           <button type="button" onclick="setLotShift('03',this)">03</button>
+         </div></div>`
+    : `<div class="fld"><label>Shift</label><input class="mono" value="01" readonly disabled></div>`;
+  $('cardMount').innerHTML=`
+   <div class="card">
+    <div class="card-head">
+      <div class="code">${it.code?esc(it.code):'— no barcode —'}</div>
+      <div class="desc">${esc(it.desc)}</div>
+    </div>
+    <div class="card-body">
+      <div class="grid">
+        <div class="fld full"><label>${codeLabel}</label><input id="f_code" class="mono" value="${esc(it.code||'')}" readonly></div>
+        <div class="fld ${isPlastic?'':'full'}"><label>Lot date (MM/DD/YY)</label>
+          <input id="f_lotdate" class="mono big" inputmode="none" readonly enterkeyhint="next" placeholder="MM/DD/YY"
+                 oninput="fmtLotDate()" onfocus="this.select();kpBind('f_lotdate')" onblur="kpOnBlur()" onkeydown="cardEnter(event,'f_loc')"></div>
+        ${shiftFld}
+        <div class="fld full"><label>Location — building + number</label>
+          <div class="locrow">
+            <select id="f_bldg" onchange="onCardBldg(this.value)">${bldgOpts}</select>
+            <input id="f_loc" class="mono" inputmode="none" readonly enterkeyhint="next" placeholder="number" value="${vNum}" onfocus="kpBind('f_loc')" onblur="kpOnBlur()" oninput="onCardLoc()" onkeydown="cardEnter(event,'f_pallets')"></div></div>
+        <div class="fld full"><label>Pallets with this lot</label>
+          <div class="biginput"><input id="f_pallets" class="big" inputmode="none" readonly enterkeyhint="done" value="0" onfocus="this.select();kpBind('f_pallets')" onblur="kpOnBlur()" onkeydown="cardEnter(event,'save')"></div></div>
+      </div>
+    </div>
+    <div class="actions">
+      <button class="btn ghost" onclick="clearCard()">Cancel</button>
+      <button class="btn primary" id="f_save" onclick="saveLot()">✓ Save lot</button>
+    </div>
+   </div>`;
+  setTimeout(()=>{ const f=$('f_lotdate'); if(f){ f.focus(); } }, 80);
+}
+function setLotShift(s, btn){
+  lotShift=s;
+  const seg=$('shiftSeg'); if(seg){ Array.prototype.forEach.call(seg.children, function(b){ b.classList.toggle('on', b===btn); }); }
+}
+// Keep the lot date formatted as MM/DD/YY while typing — slashes auto-insert, capped at 6 digits.
+function fmtLotDate(){
+  const el=$('f_lotdate'); if(!el) return;
+  const d=el.value.replace(/\D/g,'').slice(0,6);
+  let out=d;
+  if(d.length>4) out=d.slice(0,2)+'/'+d.slice(2,4)+'/'+d.slice(4);
+  else if(d.length>2) out=d.slice(0,2)+'/'+d.slice(2);
+  el.value=out;
+}
+var _savingLot=false;
+async function saveLot(){
+  if(_savingLot) return;
+  _savingLot=true;
+  const it=state.current;
+  if(!it){ _savingLot=false; return; }
+  const digits=(($('f_lotdate')&&$('f_lotdate').value)||'').replace(/\D/g,'');
+  if(digits.length<6){ toast('Enter the full lot date (MM/DD/YY)','err'); _savingLot=false; const f=$('f_lotdate'); if(f){ f.focus(); kpBind('f_lotdate'); } return; }
+  const shift = state.dept==='plastics' ? (lotShift||'01') : '01';
+  const bNow=($('f_bldg')&&$('f_bldg').value||'').trim();
+  const nNow=($('f_loc')&&$('f_loc').value||'').replace(/\D/g,'');
+  if(!bNow||!nNow){ toast(!bNow?'Pick a building before saving':'Enter a location number before saving','err'); _savingLot=false; const f=!bNow?$('f_bldg'):$('f_loc'); if(f){ f.focus(); if(f!==$('f_bldg')){ kpBind('f_loc'); } } return; }
+  const pallets=Math.round(asNum(($('f_pallets')&&$('f_pallets').value)||0));
+  if(pallets<=0){ toast('Enter how many pallets','err'); _savingLot=false; const f=$('f_pallets'); if(f){ f.focus(); kpBind('f_pallets'); } return; }
+  const lot = digits.slice(0,2)+'/'+digits.slice(2,4)+'/'+digits.slice(4,6)+' '+shift;
+  const now=new Date();
+  const ts=now.getFullYear()+'-'+String(now.getMonth()+1).padStart(2,'0')+'-'+String(now.getDate()).padStart(2,'0')
+    +' '+String(now.getHours()).padStart(2,'0')+':'+String(now.getMinutes()).padStart(2,'0')+':'+String(now.getSeconds()).padStart(2,'0');
+  const counter=$('counterName').value.trim()||'—';
+  const entry={ ts, counter, dept:(state.dept==='plastics'?'Plastics':'Metals'), code:(it.code||'').trim(), desc:(it.desc||'').trim(), lot, loc:composeLoc(), pallets };
+  const btn=$('f_save'); const btnLabel=btn?btn.textContent:''; if(btn){ btn.disabled=true; btn.textContent='Saving…'; }
+  callApi('appendLot',[entry, state.dept])
+    .then(function(){
+      activeLots().unshift(entry); persistSession(); renderLotRecent();
+      toast('Saved · '+pallets+' pallet'+(pallets===1?'':'s')+' · '+lot);
+      clearCardOnly(); focusScan();
+    })
+    .catch(function(err){ if(btn){ btn.disabled=false; btn.textContent=btnLabel||'✓ Save lot'; } toast('Save failed — try again','err'); console.error(err); })
+    .finally(function(){ _savingLot=false; const b=$('f_save'); if(b&&b.disabled){ b.disabled=false; if(b.textContent==='Saving…') b.textContent=btnLabel||'✓ Save lot'; } });
+}
+function renderLotRecent(){
+  const list=activeLots();
+  const sc=$('sessCount'); if(sc) sc.textContent=list.length;
+  const el=$('recentList'); if(!el) return;
+  if(!list.length){ el.innerHTML='<div class="empty-recent">Lot counts will appear here after you save them.</div>'; return; }
+  el.innerHTML=list.map(function(e){
+    return `<div class="entry">
+     <div class="info">
+       <div class="c">${esc(e.code||'no barcode')} · <span style="opacity:.7">${esc(e.dept)}</span></div>
+       <div class="d">${esc(e.desc)}</div>
+       <div class="m">Lot ${esc(e.lot)} · ${esc(e.counter)}</div>
+       <div class="loc">📍 ${esc(e.loc||'no location')}</div>
+     </div>
+     <div class="qty"><div class="big">${e.pallets}<small>plt</small></div><small class="tot">pallets with this lot</small></div>
+   </div>`;
+  }).join('');
+}
+
 async function saveEntry(){
   if(_saving) return;                 // already saving — ignore the second tap
   _saving=true;
@@ -2519,6 +2652,7 @@ function entryIdentity(e){ return [e.ts, norm(e.code), norm(e.loc), String(e.tot
 
 /* ---- recent list + export ---- */
 function renderRecent(){
+  if(state.mode==='lot'){ return renderLotRecent(); }
   const list=activeEntries();
   $('sessCount').textContent=list.length;
   const el=$('recentList');

@@ -478,7 +478,7 @@ html.modal-lock body{position:fixed;left:0;right:0;width:100%;overflow:hidden}
       </div>
 
       <div class="bldgbar" id="bldgBar">
-        <span class="bldglbl">Location you're in</span>
+        <span class="bldglbl">Building</span>
         <select id="topBldg" onchange="setBuilding(this.value)"></select>
         <button type="button" class="mapbtn" id="mapBtn" onclick="openMap()">🗺 Map</button>
       </div>
@@ -747,7 +747,7 @@ var API_SECRET = '';
 
 /* Bump this on every page change — the number shows in the bottom-right corner so you can
    confirm a reload actually picked up the latest page (an old cached page has no tag). */
-var APP_VERSION = 'v85';
+var APP_VERSION = 'v86';
 
 /* Call a backend function: callApi('fn', [arg1, arg2]) -> Promise(result). */
 function callApi(fn, args){

@@ -752,7 +752,7 @@ var API_SECRET = '';
 
 /* Bump this on every page change — the number shows in the bottom-right corner so you can
    confirm a reload actually picked up the latest page (an old cached page has no tag). */
-var APP_VERSION = 'v87';
+var APP_VERSION = 'v88';
 
 /* Call a backend function: callApi('fn', [arg1, arg2]) -> Promise(result). */
 function callApi(fn, args){
@@ -2256,7 +2256,10 @@ function kpTap(e,k){
   const el=$(activeNumField); if(!el) return;
   if(k==='next'){ kpAdvance(); return; }
   if(_kpFresh){ el.value=''; _kpFresh=false; }              // first digit clears what was there
-  el.value = (el.value==='0' ? '' : (el.value||'')) + k;   // replace the placeholder 0 on first digit
+  // Replace a lone placeholder "0" on first digit — but NOT in the lot date, where a leading 0 is
+  // real (e.g. 02/20/26); stripping it there turned "02…" into "2…".
+  const strip0 = (el.value==='0' && activeNumField!=='f_lotdate');
+  el.value = (strip0 ? '' : (el.value||'')) + k;
   el.dispatchEvent(new Event('input',{bubbles:true}));      // fires calc() for the total
 }
 function kpAdvance(){

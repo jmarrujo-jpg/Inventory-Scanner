@@ -575,6 +575,16 @@ html.modal-lock body{position:fixed;left:0;right:0;width:100%;overflow:hidden}
   </div>
 </div>
 
+<!-- option picker for "Check Value" rows (e.g. S-1 or S-3? → tap a labelled button) -->
+<div id="optModal" class="modal hide">
+  <div class="modal-card">
+    <div class="modal-title" id="optTitle"></div>
+    <div class="modal-hint" id="optHint"></div>
+    <div class="optbtns" id="optBtns"></div>
+    <div class="modal-actions"><button class="btn ghost" id="optCancel">Cancel</button></div>
+  </div>
+</div>
+
 <!-- location sanity warning (entered spot is far from where you've been counting) -->
 <div id="warnModal" class="modal hide">
   <div class="modal-card">
@@ -702,6 +712,8 @@ html.modal-lock body{position:fixed;left:0;right:0;width:100%;overflow:hidden}
 .shiftseg button{flex:1;height:52px;border:2px solid var(--line);background:var(--panel);border-radius:10px;
   font-family:'JetBrains Mono',monospace;font-weight:800;font-size:17px;color:var(--ink-soft);cursor:pointer}
 .shiftseg button.on{background:var(--dept);border-color:var(--dept);color:var(--dept-ink)}
+.optbtns{display:flex;flex-direction:column;gap:10px;margin:12px 0 4px}
+.optbtn{width:100%;min-height:56px;font-size:17px}
 .mapov{position:fixed;inset:0;z-index:9000;background:var(--paper);display:flex;flex-direction:column}
 .mapov.hide{display:none}
 .mapbar{display:flex;align-items:center;gap:10px;padding:12px 14px;background:var(--panel);border-bottom:1px solid var(--line)}
@@ -752,7 +764,7 @@ var API_SECRET = '';
 
 /* Bump this on every page change — the number shows in the bottom-right corner so you can
    confirm a reload actually picked up the latest page (an old cached page has no tag). */
-var APP_VERSION = 'v89';
+var APP_VERSION = 'v90';
 
 /* Call a backend function: callApi('fn', [arg1, arg2]) -> Promise(result). */
 function callApi(fn, args){
@@ -2036,16 +2048,47 @@ function renderCalcHist(){
 }
 function reuseCalc(v){ const d=$('calcDisplay'); d.value=String(v); calcLast=calcEval(String(v)); $('calcResult').textContent=Number(v).toLocaleString(); }
 
-/* ---- check values: prompt for manual entries, append them to the code ---- */
+/* ---- check values: prompt for manual entries, append them to the code ----
+   Two marker styles are supported:
+   • Legacy: a cell wrapped in !!! … !!! (or bare INPUT / ADD <x>) → free-text prompt.
+   • Options: a row whose Type cell is "Check Value" carries a spec in its Description, e.g.
+         S-1 or S-3?, "1"(S-1), "3"(S-3)
+     Each "VALUE"(LABEL) is a choice — LABEL is shown on a button, VALUE is what gets appended to
+     the product code when picked (so "243807" + "1" -> "243807 1", which is a real lookup row). */
+// Pull a { question, options:[{value,label}] } spec out of a description/marker string.
+function parseCheckSpec(s){
+  s = (s==null?'':String(s)).trim();
+  if(!s) return null;
+  const mm=/!!!\s*([\s\S]+?)\s*!!!/.exec(s); if(mm) s=mm[1].trim();   // unwrap !!! … !!! if present
+  const opts=[]; const re=/"([^"]*)"\s*\(([^)]*)\)/g; let m;
+  while((m=re.exec(s))){ opts.push({ value:m[1].trim(), label:(m[2]||'').trim() }); }
+  let q=s; const qi=s.indexOf('"'); if(qi>=0) q=s.slice(0,qi);       // question = text before the first option
+  q=q.replace(/[,\s]+$/,'').trim();
+  return { question: q||'Choose a value', options: opts };
+}
+// Resolve a check-value spec; returns the chosen VALUE to append to the code, or null if cancelled.
+async function resolveCheckSpec(spec, code){
+  if(spec && spec.options.length) return await askOption(spec.question, spec.options, code);
+  return await askValue((spec&&spec.question)||'Enter value', 'This gets added to the code (scanned: '+(code||'')+')');
+}
 // Scan/pick entry point: resolve any check values first (via popup), then open the card.
 async function chooseItem(it){
   let item = Object.assign({}, it);   // don't mutate the lookup row
-  const keys = ['desc','weight','type']; // scan all of them; undefined fields are skipped
+  // Option-style check value (Type cell literally "Check Value"): the Description holds the spec.
+  if(norm(item.type)==='CHECK VALUE'){
+    const chosen = await resolveCheckSpec(parseCheckSpec(item.desc), item.code);
+    if(chosen===null){ focusScan(); return; }               // cancelled — abort this scan
+    item.code = (item.code ? item.code+' ' : '') + chosen;  // append the chosen VALUE to the code
+    item.desc=''; item.type='';                             // clear the markers
+    const r=activeIdx()[norm(item.code)]; if(r) item=Object.assign({}, r);  // swap in the real row
+    selectItem(item); return;
+  }
+  // Legacy markers in desc/weight/type (also upgraded to buttons if the marker lists "val"(label)s).
+  const keys = ['desc','weight','type'];
   for(let n=0;n<keys.length;n++){
     const key = keys[n];
-    const prompt = checkPrompt(item[key]);
-    if(prompt===null) continue;
-    const val = await askValue(prompt, 'This gets added to the code (scanned: '+(item.code||'')+')');
+    if(checkPrompt(item[key])===null) continue;
+    const val = await resolveCheckSpec(parseCheckSpec(item[key]), item.code);
     if(val===null){ focusScan(); return; }                 // cancelled — abort this scan
     item.code = (item.code ? item.code+' ' : '') + val;     // append the entry to the code / barcode
     if(key==='weight' || key==='type') item[key]=val;       // put the value in its field
@@ -2055,6 +2098,22 @@ async function chooseItem(it){
   const resolved = activeIdx()[norm(item.code)];
   if(resolved) item = Object.assign({}, resolved);
   selectItem(item);
+}
+// A popup of choices; resolves to the chosen VALUE, or null if cancelled.
+function askOption(title, options, code){
+  return new Promise(function(resolve){
+    const m=$('optModal');
+    $('optTitle').textContent=title||'Choose a value';
+    $('optHint').textContent = code ? ('Scanned: '+code) : '';
+    const box=$('optBtns');
+    box.innerHTML=options.map(function(o,i){
+      return '<button type="button" class="btn primary optbtn" data-i="'+i+'">'+esc(o.label||o.value)+'</button>';
+    }).join('');
+    m.classList.remove('hide');
+    function finish(v){ m.classList.add('hide'); box.onclick=null; $('optCancel').onclick=null; resolve(v); }
+    box.onclick=function(e){ const b=e.target.closest('button[data-i]'); if(!b) return; finish(options[Number(b.getAttribute('data-i'))].value); };
+    $('optCancel').onclick=function(){ finish(null); };
+  });
 }
 // A small modal that asks for one value. Resolves to the trimmed string, or null if cancelled.
 function askValue(title, hint){

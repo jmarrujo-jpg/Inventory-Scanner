@@ -764,7 +764,7 @@ var API_SECRET = '';
 
 /* Bump this on every page change — the number shows in the bottom-right corner so you can
    confirm a reload actually picked up the latest page (an old cached page has no tag). */
-var APP_VERSION = 'v91';
+var APP_VERSION = 'v92';
 
 /* Call a backend function: callApi('fn', [arg1, arg2]) -> Promise(result). */
 function callApi(fn, args){
@@ -1523,8 +1523,10 @@ function doScan(){
   const other=otherListFor(key);                        // scanned under the wrong tab?
   if(other){ showWrongList(raw, other); clearScan(false); return; }
   if(looksLikeDate(raw)){ clearScan(); toast('📅 Date barcode ignored — scan the product code'); return; }
-  if(isQuantity(raw)){ clearScan(); toast('🔢 Quantity ignored — scan the product code'); return; }
-  showNotFound(raw);
+  // Not a known code. Don't silently discard plain numbers as "quantities" — some item codes are all
+  // digits and may not be in the lookup yet, and auto-discarding them lost real codes. Show Not Found
+  // (with Add manually); flag it as a possible quantity in case it really was a quantity mis-scan.
+  showNotFound(raw, isQuantity(raw));
 }
 // A quantity barcode is just a plain number (optionally with commas/spaces, e.g. "1,200"). Since
 // every real product code lives in the lookup, a not-found plain number is a quantity, not a code,
@@ -1542,9 +1544,10 @@ function looksLikeDate(s){
   return /\b\d{1,2}\s*[\/\-.]\s*\d{1,2}\s*[\/\-.]\s*(19|20)\d{2}\b/.test(s)   // MM/DD/YYYY
       || /\b(19|20)\d{2}\s*[\/\-.]\s*\d{1,2}\s*[\/\-.]\s*\d{1,2}\b/.test(s);  // YYYY/MM/DD
 }
-function showNotFound(code){
+function showNotFound(code, maybeQty){
   $('notFound').classList.remove('hide');
-  $('notFound').innerHTML=`<span>⚠</span><div><b>“${esc(code)}” not found</b> in ${state.dept==='plastics'?'Plastics':(state.metalKind)}.<br>
+  const hint = maybeQty ? `<br><span style="opacity:.75;font-size:13px">If this was a quantity barcode, just scan the product code instead.</span>` : '';
+  $('notFound').innerHTML=`<span>⚠</span><div><b>“${esc(code)}” not found</b> in ${state.dept==='plastics'?'Plastics':(state.metalKind)}.${hint}<br>
     <span class="linkbtn" onclick="openSearchWith('${esc(code)}')">Search by description</span>
     <button type="button" class="btn primary nf-add" onclick="addManual('${esc(code)}')">➕ Add manually</button></div>`;
   clearCardOnly();

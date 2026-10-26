@@ -764,7 +764,7 @@ var API_SECRET = '';
 
 /* Bump this on every page change — the number shows in the bottom-right corner so you can
    confirm a reload actually picked up the latest page (an old cached page has no tag). */
-var APP_VERSION = 'v93';
+var APP_VERSION = 'v94';
 
 /* Call a backend function: callApi('fn', [arg1, arg2]) -> Promise(result). */
 function callApi(fn, args){
@@ -2082,6 +2082,19 @@ async function resolveCheckSpec(spec, code){
   if(spec && spec.options.length) return await askOption(spec.question, spec.options, code);
   return await askValue((spec&&spec.question)||'Enter value', 'This gets added to the code (scanned: '+(code||'')+')');
 }
+// Append a chosen check-value to a base code the way the real lookup row is written. Some values are
+// bare tokens that take a space ("243807" + "1" -> "243807 1"); others are suffixes that attach
+// directly ("26018" + "-K" -> "26018-K"). Try both and use whichever is a real row; if neither
+// matches, guess from the value (leading letter/number -> space, otherwise attach directly).
+function appendCode(base, chosen){
+  base = base||''; chosen = (chosen==null?'':String(chosen));
+  if(!base) return chosen;
+  const idx = activeIdx();
+  const direct = base + chosen, spaced = base + ' ' + chosen;
+  if(idx[norm(direct)]) return direct;
+  if(idx[norm(spaced)]) return spaced;
+  return /^[A-Za-z0-9]/.test(chosen) ? spaced : direct;
+}
 // Scan/pick entry point: resolve any check values first (via popup), then open the card.
 async function chooseItem(it){
   let item = Object.assign({}, it);   // don't mutate the lookup row
@@ -2091,7 +2104,7 @@ async function chooseItem(it){
   if(norm(item.type)==='CHECK VALUE' || (descSpec && descSpec.options.length)){
     const chosen = await resolveCheckSpec(descSpec, item.code);
     if(chosen===null){ focusScan(); return; }               // cancelled — abort this scan
-    item.code = (item.code ? item.code+' ' : '') + chosen;  // append the chosen VALUE to the code
+    item.code = appendCode(item.code, chosen);              // attach the chosen VALUE (space or direct)
     item.desc=''; item.type='';                             // clear the markers
     const r=activeIdx()[norm(item.code)]; if(r) item=Object.assign({}, r);  // swap in the real row
     selectItem(item); return;
@@ -2103,7 +2116,7 @@ async function chooseItem(it){
     if(checkPrompt(item[key])===null) continue;
     const val = await resolveCheckSpec(parseCheckSpec(item[key]), item.code);
     if(val===null){ focusScan(); return; }                 // cancelled — abort this scan
-    item.code = (item.code ? item.code+' ' : '') + val;     // append the entry to the code / barcode
+    item.code = appendCode(item.code, val);                 // attach the entry (space or direct)
     if(key==='weight' || key==='type') item[key]=val;       // put the value in its field
     else item[key]='';                                      // clear the marker text (e.g. description)
   }

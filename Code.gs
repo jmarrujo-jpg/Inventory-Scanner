@@ -65,10 +65,15 @@ function readCans(sheet) {
     return { code: str_(r[0]), desc: str_(r[1]), perUnit: num_(r[2]) };
   });
 }
-// Plastics_Lookup: Item # | Description | Type | Per Pallet/Box
+// Plastics_Lookup: Item # | Description | Type | Per Pallet/Box | Check Value
+// Check Value (col E, optional): a prompt + selectable suffixes for a base item,
+// written as  Question "-K","-NT","-(9-12)"  — scanning the base pops those as
+// buttons; the picked suffix is appended to the item # (26018 + "-K" = 26018-K).
+// Keep a row that has only a Check Value (a base "router" row) even if its
+// description is blank.
 function readPlastics(sheet) {
-  return rows_(sheet).filter(function (r) { return str_(r[1]); }).map(function (r) {
-    return { code: str_(r[0]), desc: str_(r[1]), type: str_(r[2]), perUnit: num_(r[3]) };
+  return rows_(sheet).filter(function (r) { return str_(r[1]) || str_(r[4]); }).map(function (r) {
+    return { code: str_(r[0]), desc: str_(r[1]), type: str_(r[2]), perUnit: num_(r[3]), check: str_(r[4]) };
   });
 }
 

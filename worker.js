@@ -90,7 +90,10 @@ function num_(v) {
 // ---------------- backend functions ----------------
 // Ends_Lookup:     Label Code  | Description | Per Pallet     | Weight | Type
 // Cans_Lookup:     Label Number | Description | Per Pallet
-// Plastics_Lookup: Item #       | Description | Type           | Per Pallet/Box
+// Plastics_Lookup: Item #       | Description | Type           | Per Pallet/Box | Check Value
+// Check Value (col E, optional): a prompt + selectable suffixes for a base item,
+// e.g.  Question "-K","-NT","-(9-12)"  — scanning the base pops those as buttons
+// and the picked suffix is appended to the item # (26018 + "-K" = 26018-K).
 async function getLookups(sheets) {
   const [ends, cans, plastics] = await Promise.all([
     sheets.rows(TAB.ends),
@@ -104,8 +107,8 @@ async function getLookups(sheets) {
     cans: cans.filter((r) => str_(r[1])).map((r) => ({
       code: str_(r[0]), desc: str_(r[1]), perUnit: num_(r[2]),
     })),
-    plastics: plastics.filter((r) => str_(r[1])).map((r) => ({
-      code: str_(r[0]), desc: str_(r[1]), type: str_(r[2]), perUnit: num_(r[3]),
+    plastics: plastics.filter((r) => str_(r[1]) || str_(r[4])).map((r) => ({
+      code: str_(r[0]), desc: str_(r[1]), type: str_(r[2]), perUnit: num_(r[3]), check: str_(r[4]),
     })),
   };
 }

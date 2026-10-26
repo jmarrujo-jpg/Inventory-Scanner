@@ -764,7 +764,7 @@ var API_SECRET = '';
 
 /* Bump this on every page change — the number shows in the bottom-right corner so you can
    confirm a reload actually picked up the latest page (an old cached page has no tag). */
-var APP_VERSION = 'v92';
+var APP_VERSION = 'v93';
 
 /* Call a backend function: callApi('fn', [arg1, arg2]) -> Promise(result). */
 function callApi(fn, args){
@@ -2063,8 +2063,16 @@ function parseCheckSpec(s){
   s = (s==null?'':String(s)).trim();
   if(!s) return null;
   const mm=/!!!\s*([\s\S]+?)\s*!!!/.exec(s); if(mm) s=mm[1].trim();   // unwrap !!! … !!! if present
-  const opts=[]; const re=/"([^"]*)"\s*\(([^)]*)\)/g; let m;
-  while((m=re.exec(s))){ opts.push({ value:m[1].trim(), label:(m[2]||'').trim() }); }
+  // Each option is  "VALUE"(LABEL)  — but be tolerant of real-world sheet entries: spaces inside the
+  // quotes ("  K "), a space before the paren ("A" (AGRIFROST)), a missing closing paren
+  // ("S" (SPLENDOR), or no label at all ("1"). VALUE is trimmed; LABEL falls back to VALUE.
+  const opts=[]; const re=/"([^"]*)"\s*(?:\(([^)]*)\)?)?/g; let m;
+  while((m=re.exec(s))){
+    const value=(m[1]||'').trim();
+    if(!value) continue;
+    const label=(m[2]!=null && m[2].trim()!=='') ? m[2].trim() : value;
+    opts.push({ value, label });
+  }
   let q=s; const qi=s.indexOf('"'); if(qi>=0) q=s.slice(0,qi);       // question = text before the first option
   q=q.replace(/[,\s]+$/,'').trim();
   return { question: q||'Choose a value', options: opts };

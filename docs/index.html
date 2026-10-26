@@ -529,7 +529,14 @@ html.modal-lock body{position:fixed;left:0;right:0;width:100%;overflow:hidden}
       <div id="cardMount"></div>
 
       <div class="recent">
-        <h3>Counted so far</h3>
+        <div class="recent-head">
+          <h3>Counted so far</h3>
+          <div class="loc-find">
+            <input id="recentFilter" class="mono" inputmode="none" readonly placeholder="🔎 find location"
+                   onfocus="tkBind('recentFilter')" onblur="tkOnBlur()" oninput="onRecentFilter()">
+            <button type="button" class="recent-x" id="recentFilterX" onclick="clearRecentFilter()" aria-label="Clear location filter">×</button>
+          </div>
+        </div>
         <div id="recentList"><div class="empty-recent">Scanned items will appear here after you save them.</div></div>
       </div>
     </div>
@@ -714,6 +721,13 @@ html.modal-lock body{position:fixed;left:0;right:0;width:100%;overflow:hidden}
 .shiftseg button.on{background:var(--dept);border-color:var(--dept);color:var(--dept-ink)}
 .optbtns{display:flex;flex-direction:column;gap:10px;margin:12px 0 4px}
 .optbtn{width:100%;min-height:56px;font-size:17px}
+.recent-head{display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap}
+.loc-find{position:relative;display:flex;align-items:center}
+.loc-find input{height:42px;width:180px;max-width:46vw;border:2px solid var(--line);border-radius:10px;background:var(--panel);
+  padding:0 32px 0 12px;font-family:'JetBrains Mono',monospace;font-weight:700;font-size:14px;color:var(--ink)}
+.recent-x{position:absolute;right:4px;width:30px;height:30px;border:none;background:transparent;font-size:20px;line-height:1;color:var(--ink-soft);display:none;cursor:pointer}
+.recent-x.show{display:block}
+.recent-note{font-size:13px;color:var(--ink-soft);margin:2px 0 10px}
 .mapov{position:fixed;inset:0;z-index:9000;background:var(--paper);display:flex;flex-direction:column}
 .mapov.hide{display:none}
 .mapbar{display:flex;align-items:center;gap:10px;padding:12px 14px;background:var(--panel);border-bottom:1px solid var(--line)}
@@ -764,7 +778,7 @@ var API_SECRET = '';
 
 /* Bump this on every page change — the number shows in the bottom-right corner so you can
    confirm a reload actually picked up the latest page (an old cached page has no tag). */
-var APP_VERSION = 'v94';
+var APP_VERSION = 'v95';
 
 /* Call a backend function: callApi('fn', [arg1, arg2]) -> Promise(result). */
 function callApi(fn, args){
@@ -2421,14 +2435,14 @@ function tkBuild(){
     + '</div>';
   g.innerHTML=html;
 }
-function tkIsField(id){ return id==='modalInput'||id==='f_desc'||id==='f_weight'||id==='f_type'||id==='searchInput'; }
+function tkIsField(id){ return id==='modalInput'||id==='f_desc'||id==='f_weight'||id==='f_type'||id==='searchInput'||id==='recentFilter'; }
 function tkShow(){ tkBuild(); kpHide(); $('textKeypad').classList.add('show'); $('textKeypad').setAttribute('aria-hidden','false'); document.body.classList.add('tk-open'); }
 function tkHide(){ tkBackStop(); $('textKeypad').classList.remove('show'); $('textKeypad').setAttribute('aria-hidden','true'); document.body.classList.remove('tk-open'); }
 function tkBind(id){
   if(!tkIsField(id)) return;
   activeTextField=id;
-  kbLock = (id!=='modalInput');   // card text + search stay locked open; the value prompt keeps old behavior
-  const l=$('tkField'); if(l){ l.textContent=({modalInput:'value',f_desc:'Description',f_weight:'Weight',f_type:'Type',searchInput:'Search'})[id]||'value'; }
+  kbLock = (id!=='modalInput' && id!=='recentFilter');   // card text + search stay locked; value prompt + location filter don't
+  const l=$('tkField'); if(l){ l.textContent=({modalInput:'value',f_desc:'Description',f_weight:'Weight',f_type:'Type',searchInput:'Search',recentFilter:'Location'})[id]||'value'; }
   tkShow();
   const el=$(id); if(el){ setTimeout(()=>scrollFieldUp(el),40); }
 }
@@ -2760,13 +2774,33 @@ function flushRefresh(){ if(_refreshTO){ clearTimeout(_refreshTO); _refreshTO=nu
 function entryIdentity(e){ return [e.ts, norm(e.code), norm(e.loc), String(e.total)].join('\u0001'); }
 
 /* ---- recent list + export ---- */
+// Location filter for the "Counted so far" list — type a location to jump to its entries and edit.
+var recentLocFilter='';
+function locStrip(s){ return norm(s).replace(/[^A-Z0-9]/g,''); }   // "M-111" -> "M111" so M111/111 match
+function onRecentFilter(){
+  const el=$('recentFilter'); recentLocFilter=(el?el.value:'').trim();
+  const x=$('recentFilterX'); if(x) x.classList.toggle('show', recentLocFilter.length>0);
+  renderRecent();
+}
+function clearRecentFilter(){
+  recentLocFilter=''; const el=$('recentFilter'); if(el){ el.value=''; el.blur(); }
+  const x=$('recentFilterX'); if(x) x.classList.remove('show');
+  tkHide(); renderRecent();
+}
 function renderRecent(){
   if(state.mode==='lot'){ return renderLotRecent(); }
-  const list=activeEntries();
-  $('sessCount').textContent=list.length;
+  const all=activeEntries();
+  $('sessCount').textContent=all.length;
   const el=$('recentList');
-  if(!list.length){ el.innerHTML='<div class="empty-recent">Scanned items will appear here after you save them.</div>'; return; }
-  el.innerHTML=list.map((e,i)=>{
+  if(!all.length){ el.innerHTML='<div class="empty-recent">Scanned items will appear here after you save them.</div>'; return; }
+  const fs=locStrip(recentLocFilter);
+  const items=all.map((e,i)=>({e,i})).filter(x => !fs || locStrip(x.e.loc||'').indexOf(fs)>=0);   // keep original index for editEntry
+  if(!items.length){
+    el.innerHTML='<div class="empty-recent">No entries at “'+esc(recentLocFilter)+'”. <span class="linkbtn" onclick="clearRecentFilter()">Show all</span></div>';
+    return;
+  }
+  const note = fs ? '<div class="recent-note">Showing '+items.length+' at “'+esc(recentLocFilter)+'” · <span class="linkbtn" onclick="clearRecentFilter()">Show all</span></div>' : '';
+  el.innerHTML=note+items.map(({e,i})=>{
     const full=Number(e.full)||0, extra=Number(e.extra)||0, tot=Number(e.total)||0;
     let big='';
     if(full>0) big+=`${full.toLocaleString()}<small>plt</small>`;

@@ -30,6 +30,7 @@ const TAB = {
   endsOut: 'Ends',
   plasticsOut: 'Plastics',
   lotOut: 'Lot_Counts',
+  verifyOut: 'Count_Verification',
 };
 
 export default {
@@ -51,7 +52,7 @@ export default {
       new Response(JSON.stringify(obj), { status, headers: { ...cors, 'Content-Type': 'application/json' } });
 
     if (request.method === 'OPTIONS') return new Response(null, { status: 204, headers: cors });
-    if (request.method === 'GET') return json({ ok: true, service: 'inventory-count-api', build: 'v13-lot' }, 200);
+    if (request.method === 'GET') return json({ ok: true, service: 'inventory-count-api', build: 'v14-verify' }, 200);
     if (request.method !== 'POST') return json({ ok: false, error: 'Method not allowed' }, 405);
 
     let payload;
@@ -83,6 +84,8 @@ async function handle(fn, args, env) {
     case 'getLookups': return getLookups(sheets);
     case 'appendEntry': return appendEntry(sheets, args[0], args[1]);
     case 'appendLot': return appendLot(sheets, args[0]);
+    case 'appendVerify': return appendVerify(sheets, args[0]);
+    case 'getVerify': return getVerify(sheets);
     case 'getEntries': return getEntries(sheets);
     case 'updateEntry': return updateEntry(sheets, args[0]);
     case 'deleteEntry': return deleteEntry(sheets, args[0]);
@@ -286,6 +289,30 @@ async function appendLot(sheets, e) {
   const row = [e.ts, e.counter, e.dept, e.code, e.desc, e.lot, e.loc, e.pallets];
   await sheets.appendEnsuring(TAB.lotOut, row, header);
   return true;
+}
+
+/**
+ * Count Verification mode: the SECONDARY counter's count for a spot, written to its own tab so it
+ * never mixes into real inventory. The PRIMARY counter reads these back (getVerify) and compares
+ * against their own count at save time. Tab auto-created with its header on first use.
+ */
+async function appendVerify(sheets, e) {
+  e = e || {};
+  const header = ['Timestamp', 'Counter', 'Department', 'Category', 'Code', 'Description', 'Per Unit', 'Full', 'Extra', 'Location', 'Total'];
+  const row = [e.ts, e.counter, e.dept, e.category, e.code, e.desc, e.per, e.full, e.extra, e.loc, e.total];
+  await sheets.appendEnsuring(TAB.verifyOut, row, header);
+  return true;
+}
+// Read every secondary verification count so the primary can compare. Empty if the tab doesn't exist.
+async function getVerify(sheets) {
+  let values;
+  try { values = await sheets.readAll(TAB.verifyOut); }
+  catch (e) { if (String((e && e.message) || '').indexOf('Unable to parse range') !== -1) return []; throw e; }
+  const rows = values.length ? values.slice(1) : [];
+  return rows.map((r) => ({
+    ts: str_(r[0]), counter: str_(r[1]), dept: str_(r[2]), category: str_(r[3]), code: str_(r[4]),
+    desc: str_(r[5]), per: num_(r[6]), full: num_(r[7]), extra: num_(r[8]), loc: str_(r[9]), total: num_(r[10]),
+  }));
 }
 
 // Read back everything currently in the output tabs so the app can show the full count list

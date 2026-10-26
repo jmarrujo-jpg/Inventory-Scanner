@@ -478,6 +478,16 @@ html.modal-lock body{position:fixed;left:0;right:0;width:100%;overflow:hidden}
         <button id="segCans" onclick="setMetalKind('cans')">Cans</button>
       </div>
 
+      <div class="verifybar" id="verifyBar">
+        <span class="vlabel">✔︎ Verification</span>
+        <select id="verifyRole" onchange="setVerifyRole(this.value)">
+          <option value="">Off — normal count</option>
+          <option value="secondary">Secondary — count first (checked)</option>
+          <option value="primary">Primary — source of truth (verifies)</option>
+        </select>
+        <span class="vstatus" id="verifyStatus"></span>
+      </div>
+
       <div class="bldgbar" id="bldgBar">
         <span class="bldglbl">Building</span>
         <select id="topBldg" onchange="setBuilding(this.value)"></select>
@@ -728,6 +738,12 @@ html.modal-lock body{position:fixed;left:0;right:0;width:100%;overflow:hidden}
 .recent-x{position:absolute;right:4px;width:30px;height:30px;border:none;background:transparent;font-size:20px;line-height:1;color:var(--ink-soft);display:none;cursor:pointer}
 .recent-x.show{display:block}
 .recent-note{font-size:13px;color:var(--ink-soft);margin:2px 0 10px}
+.verifybar{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin:4px 0 2px;padding:8px 10px;border:2px solid var(--line);border-radius:12px;background:var(--panel)}
+.verifybar.on{border-color:var(--dept);background:var(--dept-soft)}
+.verifybar .vlabel{font-family:'Archivo',sans-serif;font-weight:800;font-size:13px;color:var(--ink-soft);white-space:nowrap}
+.verifybar.on .vlabel{color:var(--dept)}
+.verifybar select{flex:1;min-width:150px;height:42px;border:2px solid var(--line);border-radius:10px;background:#fff;padding:0 8px;font-weight:700;font-size:13px;color:var(--ink)}
+.verifybar .vstatus{font-size:12px;color:var(--ink-soft);width:100%;line-height:1.3}
 .mapov{position:fixed;inset:0;z-index:9000;background:var(--paper);display:flex;flex-direction:column}
 .mapov.hide{display:none}
 .mapbar{display:flex;align-items:center;gap:10px;padding:12px 14px;background:var(--panel);border-bottom:1px solid var(--line)}
@@ -778,7 +794,7 @@ var API_SECRET = '';
 
 /* Bump this on every page change — the number shows in the bottom-right corner so you can
    confirm a reload actually picked up the latest page (an old cached page has no tag). */
-var APP_VERSION = 'v95';
+var APP_VERSION = 'v96';
 
 /* Call a backend function: callApi('fn', [arg1, arg2]) -> Promise(result). */
 function callApi(fn, args){
@@ -809,7 +825,7 @@ var DATA = {ends:[],cans:[],plastics:[]};
 </script>
 <script>
 /* ====== APP LOGIC ====== */
-const state = { dept:null, metalKind:'ends', entries:{metals:[], plastics:[]}, lots:{metals:[], plastics:[]}, current:null, building:'', locNum:'', mode:'scan' };
+const state = { dept:null, metalKind:'ends', entries:{metals:[], plastics:[]}, lots:{metals:[], plastics:[]}, verifyEntries:{metals:[], plastics:[]}, verifyRole:'', current:null, building:'', locNum:'', mode:'scan' };
 var rowSkips = {};   // per-location products the user marked "not here" in Count-by-Row (transient)
 
 /* Buildings for the Location box: pick a building, type just the number.
@@ -878,6 +894,8 @@ function persistSession(){
     localStorage.setItem(SESSION_KEY, JSON.stringify({
       entries: state.entries,
       lots: state.lots,
+      verifyEntries: state.verifyEntries,
+      verifyRole: state.verifyRole,
       counter: $('counterName') ? $('counterName').value : '',
       lastDept: state.dept,
       metalKind: state.metalKind,
@@ -898,6 +916,11 @@ function loadSession(){
       state.lots.metals   = Array.isArray(s.lots.metals)   ? s.lots.metals   : [];
       state.lots.plastics = Array.isArray(s.lots.plastics) ? s.lots.plastics : [];
     }
+    if(s.verifyEntries){
+      state.verifyEntries.metals   = Array.isArray(s.verifyEntries.metals)   ? s.verifyEntries.metals   : [];
+      state.verifyEntries.plastics = Array.isArray(s.verifyEntries.plastics) ? s.verifyEntries.plastics : [];
+    }
+    if(typeof s.verifyRole==='string') state.verifyRole = s.verifyRole;
     if(s.metalKind) state.metalKind = s.metalKind;
     if(s.building) state.building = s.building;
     if(typeof s.locNum==='string') state.locNum = s.locNum;
@@ -976,6 +999,9 @@ function openDept(dept){
   const tb=$('topBldg'); if(tb) tb.value=state.building||'';
   const tl=$('topLoc'); if(tl) tl.value=state.locNum||'';
   state.mode='scan';
+  const vr=$('verifyRole'); if(vr) vr.value=state.verifyRole||'';
+  updateVerifyUI();
+  if(state.verifyRole==='primary') loadVerifyIndex();   // load the secondary's counts to check against
   clearCard(); renderRecent(); updateHints(); syncMode();
   refreshEntries();   // pull the authoritative list from the sheet
   focusScan();
@@ -1817,6 +1843,7 @@ function syncMode(){
   const sb=$('scanbay'); if(sb) sb.style.display=showScan?'':'none';
   const bb=$('bldgBar'); if(bb) bb.style.display=showScan?'':'none';
   const sl=$('scanLabel'); if(sl) sl.textContent = m==='lot' ? 'Scan or pick the product, then enter its lot' : 'Scan barcode';
+  const vb=$('verifyBar'); if(vb) vb.style.display = (m==='lot') ? 'none' : '';   // verification applies to item/row counts, not lot
   const rp=$('rowPanel'); if(rp) rp.classList.toggle('hide', m!=='row');
   renderRecent();   // recent list switches between normal counts and lot counts by mode
   if(m==='row'){ fillRowBuildings();
@@ -2664,6 +2691,63 @@ function renderLotRecent(){
   }).join('');
 }
 
+/* ===================== Count Verification mode =====================
+   Two phones, two roles. The SECONDARY counts a spot first; their counts go to the separate
+   Count_Verification tab (never into real inventory). The PRIMARY (source of truth) counts the same
+   spot second; on Save the app compares the primary's total to the secondary's for that
+   location+product: match -> saves + "counts are the same"; mismatch -> flags the difference (the
+   primary's count still saves, since they're the source of truth). */
+function activeVerify(){ return state.dept==='plastics'?state.verifyEntries.plastics:state.verifyEntries.metals; }
+function verifyKey(dept, code, loc){ return norm(dept)+'\u0001'+norm(code)+'\u0001'+norm(loc); }
+var VERIFY_IDX={}, VERIFY_LOADED=false;
+function buildVerifyIdx(rows){
+  VERIFY_IDX={};
+  (rows||[]).forEach(function(r){
+    const k=verifyKey(r.dept, r.code, r.loc);
+    if(!VERIFY_IDX[k]) VERIFY_IDX[k]={total:0, counter:r.counter, loc:r.loc, code:r.code, desc:r.desc};
+    VERIFY_IDX[k].total += Number(r.total)||0;
+  });
+}
+function loadVerifyIndex(){
+  return callApi('getVerify', []).then(function(rows){ buildVerifyIdx(rows); VERIFY_LOADED=true; updateVerifyUI(); })
+    .catch(function(e){ console.warn('verify load failed', e); VERIFY_LOADED=false; updateVerifyUI(); });
+}
+function secondaryFor(dept, code, loc){ return VERIFY_IDX[verifyKey(dept, code, loc)]||null; }
+
+function setVerifyRole(role){
+  state.verifyRole=role||''; persistSession();
+  const sel=$('verifyRole'); if(sel && sel.value!==state.verifyRole) sel.value=state.verifyRole;
+  clearCardOnly(); $('notFound').classList.add('hide');
+  if(state.verifyRole==='primary'){ loadVerifyIndex(); }
+  updateVerifyUI(); renderRecent();
+  if(state.mode==='scan'||state.mode==='lot') focusScan();
+}
+function updateVerifyUI(){
+  const bar=$('verifyBar'); if(bar) bar.classList.toggle('on', !!state.verifyRole);
+  const sel=$('verifyRole'); if(sel && sel.value!==state.verifyRole) sel.value=state.verifyRole;
+  const st=$('verifyStatus'); if(!st) return;
+  if(state.verifyRole==='secondary') st.textContent='· Your counts save to the Verification tab for the Primary to check — not into real inventory.';
+  else if(state.verifyRole==='primary') st.textContent= VERIFY_LOADED ? '· Source of truth. Each Save is checked against the Secondary’s count.' : '· Source of truth. Loading the Secondary’s counts…';
+  else st.textContent='';
+}
+function renderVerifyRecent(){
+  const list=activeVerify();
+  const sc=$('sessCount'); if(sc) sc.textContent=list.length;
+  const el=$('recentList'); if(!el) return;
+  if(!list.length){ el.innerHTML='<div class="empty-recent">Your verification counts will appear here. The Primary checks these after counting.</div>'; return; }
+  el.innerHTML=list.map(function(e){
+    const tot=Number(e.total)||0;
+    return `<div class="entry"><div class="info">
+       <div class="c">${esc(e.code||'no barcode')} · <span style="opacity:.7">${esc(e.category||e.dept||'')}</span></div>
+       <div class="d">${esc(e.desc)}</div>
+       <div class="m">${esc(e.counter)} · to verify</div>
+       <div class="loc">📍 ${esc(e.loc||'no location')}</div>
+     </div>
+     <div class="qty"><div class="big">${tot.toLocaleString()}<small>units</small></div><small class="tot">secondary count</small></div>
+   </div>`;
+  }).join('');
+}
+
 async function saveEntry(){
   if(_saving) return;                 // already saving — ignore the second tap
   _saving=true;
@@ -2703,6 +2787,36 @@ async function saveEntry(){
     loc: composeLoc()
   };
   if(editing && ref){ entry.__tab=ref.__tab; entry.__row=ref.__row; }
+
+  // --- Count Verification: SECONDARY saves to the separate verification tab, never real inventory.
+  if(state.verifyRole==='secondary' && !editing){
+    entry.dept = state.dept;
+    const bS=$('f_save'); const lS=bS?bS.textContent:''; if(bS){ bS.disabled=true; bS.textContent='Saving…'; }
+    callApi('appendVerify', [entry])
+      .then(function(){
+        activeVerify().unshift(entry); persistSession(); renderRecent();
+        toast('Verification count saved · '+total.toLocaleString()+' units');
+        clearCardOnly(); if(state.mode==='row'){ renderRowPanel(); } else { focusScan(); }
+      })
+      .catch(function(err){ if(bS){ bS.disabled=false; bS.textContent=lS||'✓ Save entry'; } toast('Save failed — try again','err'); console.error(err); })
+      .finally(function(){ _saving=false; const b=$('f_save'); if(b&&b.disabled){ b.disabled=false; if(b.textContent==='Saving…') b.textContent=lS||'✓ Save entry'; } });
+    return;
+  }
+  // --- Count Verification: PRIMARY (source of truth) checks the Secondary's count for this spot.
+  let verifyNote='';
+  if(state.verifyRole==='primary' && !editing){
+    try{ await loadVerifyIndex(); }catch(_){ }   // pull the Secondary's latest before comparing
+    const sec = secondaryFor(state.dept, entry.code, entry.loc);
+    if(sec){
+      if((Number(sec.total)||0)===total){ verifyNote=' · ✓ counts are the same'; }
+      else {
+        const ok = confirm('⚠ Count mismatch at '+entry.loc+'\n\n'+(entry.desc||entry.code)+'\n\nSecondary counted: '+(Number(sec.total)||0).toLocaleString()+'\nYou counted: '+total.toLocaleString()+'\n\nSave YOUR count as the source of truth?');
+        if(!ok){ _saving=false; const f=$('f_full'); if(f){ f.focus(); if(f.select) f.select(); kpBind('f_full'); } return; }   // Go back and recount
+        verifyNote=' · ⚠ differs (secondary had '+(Number(sec.total)||0).toLocaleString()+')';
+      }
+    } else { verifyNote=' · no secondary count here yet'; }
+  }
+
   const btn = $('f_save');
   const btnLabel = btn ? btn.textContent : '';
   if(btn){ btn.disabled=true; btn.textContent='Saving…'; }
@@ -2719,7 +2833,7 @@ async function saveEntry(){
       activeEntries().unshift(entry);
       persistSession();
       renderRecent();
-      toast('Saved · '+total.toLocaleString()+' units');
+      toast('Saved · '+total.toLocaleString()+' units'+verifyNote);
       clearCardOnly();
       if(state.mode==='row'){ renderRowPanel(); } else { focusScan(); }
       // Re-read from the sheet so the just-added row gets its real tab/row reference. Without this
@@ -2789,6 +2903,7 @@ function clearRecentFilter(){
 }
 function renderRecent(){
   if(state.mode==='lot'){ return renderLotRecent(); }
+  if(state.verifyRole==='secondary'){ return renderVerifyRecent(); }
   const all=activeEntries();
   $('sessCount').textContent=all.length;
   const el=$('recentList');

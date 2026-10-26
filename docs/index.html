@@ -764,7 +764,7 @@ var API_SECRET = '';
 
 /* Bump this on every page change — the number shows in the bottom-right corner so you can
    confirm a reload actually picked up the latest page (an old cached page has no tag). */
-var APP_VERSION = 'v90';
+var APP_VERSION = 'v91';
 
 /* Call a backend function: callApi('fn', [arg1, arg2]) -> Promise(result). */
 function callApi(fn, args){
@@ -2074,9 +2074,11 @@ async function resolveCheckSpec(spec, code){
 // Scan/pick entry point: resolve any check values first (via popup), then open the card.
 async function chooseItem(it){
   let item = Object.assign({}, it);   // don't mutate the lookup row
-  // Option-style check value (Type cell literally "Check Value"): the Description holds the spec.
-  if(norm(item.type)==='CHECK VALUE'){
-    const chosen = await resolveCheckSpec(parseCheckSpec(item.desc), item.code);
+  // Option-style check value: the Type cell is literally "Check Value", OR the Description itself
+  // lists "value"(label) options. Either way the Description holds the spec.
+  const descSpec = parseCheckSpec(item.desc);
+  if(norm(item.type)==='CHECK VALUE' || (descSpec && descSpec.options.length)){
+    const chosen = await resolveCheckSpec(descSpec, item.code);
     if(chosen===null){ focusScan(); return; }               // cancelled — abort this scan
     item.code = (item.code ? item.code+' ' : '') + chosen;  // append the chosen VALUE to the code
     item.desc=''; item.type='';                             // clear the markers
@@ -2184,7 +2186,11 @@ function selectItem(it, edit){
 
   // Count-by-row can pre-fill a new card with the last count's location + full/extra split.
   const pre = (!ed && it.__prefill) ? it.__prefill : null;
-  const locParts = ed ? parseLoc(ed.loc) : (pre&&pre.loc ? parseLoc(pre.loc) : { bldg: state.building, num: state.locNum||'' });
+  // Scan-item mode starts the location NUMBER blank every time (you must enter it — the save guard
+  // enforces it), so a carried-over number can't silently send a scan to the wrong spot. Count-by-row
+  // still carries it (that mode walks locations on purpose). Building stays on the current one.
+  const scanBlank = (state.mode==='scan');
+  const locParts = ed ? parseLoc(ed.loc) : (pre&&pre.loc ? parseLoc(pre.loc) : { bldg: state.building, num: (scanBlank ? '' : (state.locNum||'')) });
   const vBldg = locParts.bldg;   // editing shows the entry's building; a new scan uses the current one
   const vNum  = esc(locParts.num || '');
   const bldgOpts = ['<option value="">—</option>'].concat(

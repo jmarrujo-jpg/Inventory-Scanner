@@ -752,7 +752,7 @@ var API_SECRET = '';
 
 /* Bump this on every page change — the number shows in the bottom-right corner so you can
    confirm a reload actually picked up the latest page (an old cached page has no tag). */
-var APP_VERSION = 'v88';
+var APP_VERSION = 'v89';
 
 /* Call a backend function: callApi('fn', [arg1, arg2]) -> Promise(result). */
 function callApi(fn, args){
@@ -1022,13 +1022,30 @@ function suppliesHome(){
 }
 function loadSupplies(){
   $('supList').innerHTML='<div class="sup-empty">Loading supplies…</div>';
-  Promise.all([ callApi('suppliesCatalog',[]), callApi('suppliesRead',[]) ]).then(function(res){
-    SUP.catalog=(res[0]&&res[0].rows)||[];
-    SUP.counts=(res[1]&&res[1].rows)||[];
+  // Run the two reads independently so one failing doesn't hide the other, and surface the REAL
+  // error text for each — that's what tells us whether it's the catalog (Metals_Supplies lookup tab),
+  // the saved counts (log workbook sharing / "Metals Supplies" output tab), or the Worker itself.
+  const errText=function(r){ return (r && r.reason && (r.reason.message||r.reason)) || 'failed'; };
+  Promise.allSettled([ callApi('suppliesCatalog',[]), callApi('suppliesRead',[]) ]).then(function(res){
+    const cat=res[0], cnt=res[1];
+    SUP.catalog = (cat.status==='fulfilled' && cat.value && cat.value.rows) ? cat.value.rows : [];
+    SUP.counts  = (cnt.status==='fulfilled' && cnt.value && cnt.value.rows) ? cnt.value.rows : [];
+    if(cat.status==='rejected' && cnt.status==='rejected'){
+      SUP.err=true; console.warn('supplies load failed', cat.reason, cnt.reason);
+      $('supList').innerHTML='<div class="sup-empty">Couldn’t load supplies.<br><br>'
+        +'Catalog&nbsp;→ <b>'+esc(String(errText(cat)))+'</b><br>'
+        +'Counts&nbsp;→ <b>'+esc(String(errText(cnt)))+'</b><br><br>'
+        +'Usually: the Worker needs redeploying, the <b>Metals_Supplies</b> lookup tab was renamed, or the log workbook isn’t shared with edit access. Fix, then tap ↻.</div>';
+      return;
+    }
     SUP.loaded=true; SUP.err=false; renderSupplies();
-  }).catch(function(err){
-    SUP.err=true; console.warn('supplies load failed',err);
-    $('supList').innerHTML='<div class="sup-empty">Couldn’t load supplies.<br>Check the <b>Metals_Supplies</b> lookup tab exists and the output workbook is shared with <b>edit</b> access, then tap ↻.</div>';
+    if(cat.status==='rejected' || cnt.status==='rejected'){
+      const which = cat.status==='rejected' ? ('Catalog → '+esc(String(errText(cat)))) : ('Counts → '+esc(String(errText(cnt))));
+      const note=document.createElement('div');
+      note.className='sup-empty'; note.style.color='var(--danger)';
+      note.innerHTML='⚠ Partial load — '+which+'. Tap ↻ to retry.';
+      const list=$('supList'); if(list) list.insertBefore(note, list.firstChild);
+    }
   });
 }
 // A material's Reorder At is a summed-weight threshold, so it only needs to be set on ONE of the

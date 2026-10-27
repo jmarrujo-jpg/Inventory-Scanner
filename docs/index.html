@@ -794,7 +794,7 @@ var API_SECRET = '';
 
 /* Bump this on every page change — the number shows in the bottom-right corner so you can
    confirm a reload actually picked up the latest page (an old cached page has no tag). */
-var APP_VERSION = 'v96';
+var APP_VERSION = 'v97';
 
 /* Call a backend function: callApi('fn', [arg1, arg2]) -> Promise(result). */
 function callApi(fn, args){
@@ -1001,7 +1001,8 @@ function openDept(dept){
   state.mode='scan';
   const vr=$('verifyRole'); if(vr) vr.value=state.verifyRole||'';
   updateVerifyUI();
-  if(state.verifyRole==='primary') loadVerifyIndex();   // load the secondary's counts to check against
+  if(state.verifyRole==='primary') loadVerifyIndex();        // load the secondary's counts to check against
+  else if(state.verifyRole==='secondary') refreshVerify();   // load my own verification counts for this dept
   clearCard(); renderRecent(); updateHints(); syncMode();
   refreshEntries();   // pull the authoritative list from the sheet
   focusScan();
@@ -2200,15 +2201,15 @@ function askValue(title, hint){
 
 /* ---- edit / delete an existing entry ---- */
 async function editEntry(i){
-  let e = activeEntries()[i];
+  let e = workingList()[i];
   if(!e) return;
   // A just-saved entry may not have its real sheet row yet (the refresh is debounced). Flush it now
   // so edit/delete target the right row, then re-find the entry (the list may have re-sorted).
   if(e.__row==null){
     const id=entryIdentity(e);
-    try{ await flushRefresh(); }catch(_){ }
-    const j=activeEntries().findIndex(function(x){ return entryIdentity(x)===id; });
-    if(j>=0){ i=j; e=activeEntries()[j]; }
+    try{ await flushWorking(); }catch(_){ }
+    const j=workingList().findIndex(function(x){ return entryIdentity(x)===id; });
+    if(j>=0){ i=j; e=workingList()[j]; }
   }
   $('notFound').classList.add('hide');
   closeSearch();
@@ -2219,7 +2220,7 @@ async function editEntry(i){
 }
 function deleteEntry(){
   if(state.editIndex==null) return;
-  const ref = activeEntries()[state.editIndex];
+  const ref = workingList()[state.editIndex];
   if(!ref) return;
   if(!confirm('Delete this entry?\n\n'+(ref.desc||ref.code||'')+'  ·  '+(Number(ref.total)||0).toLocaleString()+' units\n\nThis removes the row from the Google Sheet.')) return;
   const del=document.querySelector('.cardDel'); if(del) del.textContent='Deleting…';
@@ -2227,7 +2228,7 @@ function deleteEntry(){
     .then(function(){
       toast('Entry deleted');
       state.editIndex=null; clearCardOnly();
-      refreshEntries();   // rows shift after a delete — re-read fresh row numbers
+      refreshWorking();   // rows shift after a delete — re-read fresh row numbers
       focusScan();
     })
     .catch(function(err){ if(del) del.textContent='Delete'; toast('Delete failed — try again','err'); console.error(err); });
@@ -2240,7 +2241,7 @@ function selectItem(it, edit){
   state.editIndex = edit ? edit.index : null;
   if(state.mode==='lot'){ buildLotCard(it); return; }   // lot mode has its own card (lot # + pallets)
   if(state.mode==='row'){ const rp=$('rowPanel'); if(rp) rp.classList.add('hide'); }   // focus on the card while editing
-  const ed = state.editIndex!=null ? (activeEntries()[state.editIndex]||null) : null;
+  const ed = state.editIndex!=null ? (workingList()[state.editIndex]||null) : null;
   const dept=state.dept, kind=state.metalKind;
   const isPlastic=dept==='plastic'||dept==='plastics';
   const perLabel = dept==='plastics' ? 'Per Pallet / Box' : 'Per Pallet';
@@ -2719,6 +2720,7 @@ function setVerifyRole(role){
   const sel=$('verifyRole'); if(sel && sel.value!==state.verifyRole) sel.value=state.verifyRole;
   clearCardOnly(); $('notFound').classList.add('hide');
   if(state.verifyRole==='primary'){ loadVerifyIndex(); }
+  else if(state.verifyRole==='secondary'){ refreshVerify(); }
   updateVerifyUI(); renderRecent();
   if(state.mode==='scan'||state.mode==='lot') focusScan();
 }
@@ -2774,10 +2776,11 @@ async function saveEntry(){
     +' '+String(now.getHours()).padStart(2,'0')+':'+String(now.getMinutes()).padStart(2,'0')+':'+String(now.getSeconds()).padStart(2,'0');
   const counter=$('counterName').value.trim()||'—';
   const editing = state.editIndex!=null;
-  const ref = editing ? activeEntries()[state.editIndex] : null;
+  const ref = editing ? workingList()[state.editIndex] : null;
   const entry={
     ts: (editing && ref) ? ref.ts : ts,
     counter,
+    dept: state.dept,   // used by the verification tab's row layout on edit
     category: (editing && ref) ? ref.category : (state.dept==='plastics'?'Plastics':(state.metalKind==='ends'?'Ends':'Cans')),
     code:($('f_code')?.value||'').trim(),
     desc:($('f_desc')?.value||'').trim(),
@@ -2790,13 +2793,13 @@ async function saveEntry(){
 
   // --- Count Verification: SECONDARY saves to the separate verification tab, never real inventory.
   if(state.verifyRole==='secondary' && !editing){
-    entry.dept = state.dept;
     const bS=$('f_save'); const lS=bS?bS.textContent:''; if(bS){ bS.disabled=true; bS.textContent='Saving…'; }
     callApi('appendVerify', [entry])
       .then(function(){
         activeVerify().unshift(entry); persistSession(); renderRecent();
         toast('Verification count saved · '+total.toLocaleString()+' units');
         clearCardOnly(); if(state.mode==='row'){ renderRowPanel(); } else { focusScan(); }
+        scheduleVerifyRefresh();   // re-read so the new row gets its sheet __row (for edit/delete)
       })
       .catch(function(err){ if(bS){ bS.disabled=false; bS.textContent=lS||'✓ Save entry'; } toast('Save failed — try again','err'); console.error(err); })
       .finally(function(){ _saving=false; const b=$('f_save'); if(b&&b.disabled){ b.disabled=false; if(b.textContent==='Saving…') b.textContent=lS||'✓ Save entry'; } });
@@ -2826,7 +2829,7 @@ async function saveEntry(){
     .then(function(){
       _saving=false;
       if(editing){
-        clearCardOnly(); refreshEntries(); focusScan();
+        clearCardOnly(); refreshWorking(); focusScan();
         toast('Updated '+total.toLocaleString()+' units');
         return;
       }
@@ -2887,6 +2890,31 @@ function flushRefresh(){ if(_refreshTO){ clearTimeout(_refreshTO); _refreshTO=nu
 // Stable identity so we can re-find an entry after a refresh re-reads/re-sorts the list.
 function entryIdentity(e){ return [e.ts, norm(e.code), norm(e.loc), String(e.total)].join('\u0001'); }
 
+/* ---- Count Verification: the secondary's own list is backed by the Count_Verification tab, with
+   the SAME card / recent-list / edit + delete flow as a normal count. workingList() is whichever
+   list the card is currently editing (verification when Secondary, otherwise the real dept list). */
+function workingList(){ return state.verifyRole==='secondary' ? activeVerify() : activeEntries(); }
+function refreshWorking(){ return state.verifyRole==='secondary' ? refreshVerify() : refreshEntries(); }
+function flushWorking(){ return state.verifyRole==='secondary' ? flushVerify() : flushRefresh(); }
+var _vrefreshing=false, _vInflight=null, _vTO=null;
+function refreshVerify(){
+  if(_vrefreshing) return _vInflight || Promise.resolve();
+  _vrefreshing=true;
+  _vInflight=callApi('getVerify', []).then(function(rows){
+    buildVerifyIdx(rows);                       // keep the primary's compare index fresh too
+    const metals=[], plastics=[];
+    (rows||[]).forEach(function(r){ (norm(r.dept)==='PLASTICS'?plastics:metals).push(r); });
+    state.verifyEntries.metals   = metals.reverse();     // newest-first, like the real list
+    state.verifyEntries.plastics = plastics.reverse();
+    persistSession();
+    if(state.verifyRole==='secondary' && state.dept) renderRecent();
+  }).catch(function(e){ console.warn('verify refresh failed', e); if(state.verifyRole==='secondary'&&state.dept) renderRecent(); })
+   .finally(function(){ _vrefreshing=false; _vInflight=null; });
+  return _vInflight;
+}
+function scheduleVerifyRefresh(){ clearTimeout(_vTO); _vTO=setTimeout(function(){ _vTO=null; refreshVerify(); }, 4000); }
+function flushVerify(){ if(_vTO){ clearTimeout(_vTO); _vTO=null; } return refreshVerify(); }
+
 /* ---- recent list + export ---- */
 // Location filter for the "Counted so far" list — type a location to jump to its entries and edit.
 var recentLocFilter='';
@@ -2903,8 +2931,7 @@ function clearRecentFilter(){
 }
 function renderRecent(){
   if(state.mode==='lot'){ return renderLotRecent(); }
-  if(state.verifyRole==='secondary'){ return renderVerifyRecent(); }
-  const all=activeEntries();
+  const all=workingList();
   $('sessCount').textContent=all.length;
   const el=$('recentList');
   if(!all.length){ el.innerHTML='<div class="empty-recent">Scanned items will appear here after you save them.</div>'; return; }

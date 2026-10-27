@@ -52,7 +52,7 @@ export default {
       new Response(JSON.stringify(obj), { status, headers: { ...cors, 'Content-Type': 'application/json' } });
 
     if (request.method === 'OPTIONS') return new Response(null, { status: 204, headers: cors });
-    if (request.method === 'GET') return json({ ok: true, service: 'inventory-count-api', build: 'v14-verify' }, 200);
+    if (request.method === 'GET') return json({ ok: true, service: 'inventory-count-api', build: 'v15-verify' }, 200);
     if (request.method !== 'POST') return json({ ok: false, error: 'Method not allowed' }, 405);
 
     let payload;
@@ -308,11 +308,18 @@ async function getVerify(sheets) {
   let values;
   try { values = await sheets.readAll(TAB.verifyOut); }
   catch (e) { if (String((e && e.message) || '').indexOf('Unable to parse range') !== -1) return []; throw e; }
-  const rows = values.length ? values.slice(1) : [];
-  return rows.map((r) => ({
-    ts: str_(r[0]), counter: str_(r[1]), dept: str_(r[2]), category: str_(r[3]), code: str_(r[4]),
-    desc: str_(r[5]), per: num_(r[6]), full: num_(r[7]), extra: num_(r[8]), loc: str_(r[9]), total: num_(r[10]),
-  }));
+  const out = [];
+  for (let n = 1; n < values.length; n++) {
+    const r = values[n] || [];
+    if (!r.some((c) => c !== '' && c !== null && c !== undefined)) continue; // skip blank rows
+    out.push({
+      __tab: TAB.verifyOut,
+      __row: n + 1, // 1-based sheet row (row 1 is the header), so the secondary can edit/delete
+      ts: str_(r[0]), counter: str_(r[1]), dept: str_(r[2]), category: str_(r[3]), code: str_(r[4]),
+      desc: str_(r[5]), per: num_(r[6]), full: num_(r[7]), extra: num_(r[8]), loc: str_(r[9]), total: num_(r[10]),
+    });
+  }
+  return out;
 }
 
 // Read back everything currently in the output tabs so the app can show the full count list
@@ -368,6 +375,7 @@ async function readTabEntries(sheets, tab, category) {
 function rowForTab(tab, e) {
   if (tab === TAB.plasticsOut) return [e.ts, e.counter, e.code, e.desc, e.type, e.per, e.full, e.extra, e.loc, e.total];
   if (tab === TAB.cansOut) return [e.ts, e.counter, e.code, e.desc, e.per, e.full, e.extra, e.loc, e.total];
+  if (tab === TAB.verifyOut) return [e.ts, e.counter, e.dept, e.category, e.code, e.desc, e.per, e.full, e.extra, e.loc, e.total];
   return [e.ts, e.counter, e.code, e.desc, e.weight, e.type, e.per, e.full, e.extra, e.loc, e.total]; // Ends
 }
 // Overwrite an existing row in place (identified by __tab + __row).

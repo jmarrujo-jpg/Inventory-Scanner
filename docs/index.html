@@ -796,7 +796,7 @@ var API_SECRET = '';
 
 /* Bump this on every page change — the number shows in the bottom-right corner so you can
    confirm a reload actually picked up the latest page (an old cached page has no tag). */
-var APP_VERSION = 'v100';
+var APP_VERSION = 'v101';
 
 /* Call a backend function: callApi('fn', [arg1, arg2]) -> Promise(result). */
 function callApi(fn, args){
@@ -959,7 +959,16 @@ function isCheckValue(v){ return checkPrompt(v)!==null; }
 /* build code->item index per list */
 function indexOf(list){ const m={}; list.forEach(it=>{ if(it.code) m[norm(it.code)]=it; }); return m; }
 var IDX = { ends:{}, cans:{}, plastics:{} };
-function buildIndex(){ IDX = { ends:indexOf(DATA.ends), cans:indexOf(DATA.cans), plastics:indexOf(DATA.plastics) }; }
+// Set of known per-pallet / per-box quantities, per list, taken straight from the lookup's "Per
+// Pallet / Per Box" column (item.perUnit — column D on Plastics). A scanned plain number that isn't a
+// product code but equals one of these is a quantity barcode, so we ignore it instead of guessing.
+var QTY = { ends:new Set(), cans:new Set(), plastics:new Set() };
+function qtyKey(v){ return String(v==null?'':v).replace(/[^\d]/g,''); }   // digits only: "1,470" -> "1470"
+function qtySetOf(list){ const s=new Set(); (list||[]).forEach(it=>{ const k=qtyKey(it.perUnit); if(k && Number(k)>0) s.add(k); }); return s; }
+function buildIndex(){
+  IDX = { ends:indexOf(DATA.ends), cans:indexOf(DATA.cans), plastics:indexOf(DATA.plastics) };
+  QTY = { ends:qtySetOf(DATA.ends), cans:qtySetOf(DATA.cans), plastics:qtySetOf(DATA.plastics) };
+}
 
 function activeList(){
   if(state.dept==='plastics') return DATA.plastics;
@@ -969,6 +978,13 @@ function activeIdx(){
   if(state.dept==='plastics') return IDX.plastics;
   return state.metalKind==='ends' ? IDX.ends : IDX.cans;
 }
+function activeQtySet(){
+  if(state.dept==='plastics') return QTY.plastics;
+  return state.metalKind==='ends' ? QTY.ends : QTY.cans;
+}
+// True when a scanned value is a plain number that matches a known per-pallet/per-box quantity
+// (and isn't a real product code — doScan checks the code index first).
+function isKnownQty(raw){ const k=qtyKey(raw); return k!=='' && activeQtySet().has(k); }
 function activeEntries(){ return state.dept==='plastics'?state.entries.plastics:state.entries.metals; }
 
 /* ---- navigation ---- */
@@ -1555,6 +1571,7 @@ $('scanInput').addEventListener('input', ()=>{
     if(looksLikeDate(raw)){ clearScan(); toast('📅 Date barcode ignored — scan the product code'); return; }
     const it=activeIdx()[norm(raw)];
     if(it){ chooseItem(it); clearScan(false); }
+    else if(isQuantity(raw) && isKnownQty(raw)){ clearScan(); toast('📦 Quantity '+raw.replace(/\s+/g,'')+' ignored — scan the product code'); }
   }, 120);
 });
 function doScan(){
@@ -1566,6 +1583,8 @@ function doScan(){
   const other=otherListFor(key);                        // scanned under the wrong tab?
   if(other){ showWrongList(raw, other); clearScan(false); return; }
   if(looksLikeDate(raw)){ clearScan(); toast('📅 Date barcode ignored — scan the product code'); return; }
+  // Known per-pallet/per-box quantity (from the lookup column) — ignore it, don't treat it as a code.
+  if(isQuantity(raw) && isKnownQty(raw)){ clearScan(); toast('📦 Quantity '+raw.replace(/\s+/g,'')+' ignored — scan the product code'); return; }
   // Not a known code. Don't silently discard plain numbers as "quantities" — some item codes are all
   // digits and may not be in the lookup yet, and auto-discarding them lost real codes. Show Not Found
   // (with Add manually); flag it as a possible quantity in case it really was a quantity mis-scan.

@@ -796,7 +796,7 @@ var API_SECRET = '';
 
 /* Bump this on every page change — the number shows in the bottom-right corner so you can
    confirm a reload actually picked up the latest page (an old cached page has no tag). */
-var APP_VERSION = 'v99';
+var APP_VERSION = 'v100';
 
 /* Call a backend function: callApi('fn', [arg1, arg2]) -> Promise(result). */
 function callApi(fn, args){
@@ -1570,6 +1570,10 @@ function doScan(){
   // digits and may not be in the lookup yet, and auto-discarding them lost real codes. Show Not Found
   // (with Add manually); flag it as a possible quantity in case it really was a quantity mis-scan.
   showNotFound(raw, isQuantity(raw));
+  // CLEAR the scan box so the not-found value doesn't just sit in the field — otherwise the next scan
+  // gets appended onto it ("1200" + real code -> no match). The banner still holds the code for Add
+  // manually, and refocusing leaves the box ready for the next scan.
+  clearScan();
 }
 // A quantity barcode is just a plain number (optionally with commas/spaces, e.g. "1,200"). Since
 // every real product code lives in the lookup, a not-found plain number is a quantity, not a code,

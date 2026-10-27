@@ -342,9 +342,11 @@ body.tk-open .modal-card{margin-top:12px;margin-bottom:12px}
 .entry .qty .big small{font-size:9px;font-weight:700;color:var(--ink-soft);letter-spacing:.04em;margin-left:1px}
 .entry .qty .big .sep{font-weight:600;opacity:.45;margin:0 3px}
 .entry .qty .tot{font-size:10px;font-weight:600;color:var(--ink-soft);letter-spacing:.03em}
-.entry .editbtn{flex:none;width:40px;height:40px;border-radius:9px;background:var(--dept-soft);color:var(--dept);
-  font-size:17px;display:grid;place-items:center;cursor:pointer}
+.entry .acts{flex:none;display:flex;flex-direction:column;gap:6px}
+.entry .editbtn{flex:none;width:40px;height:38px;border-radius:9px;background:var(--dept-soft);color:var(--dept);
+  font-size:17px;display:grid;place-items:center;cursor:pointer;border:none}
 .entry .editbtn:active{filter:brightness(.94)}
+.entry .addbtn{background:var(--dept);color:#fff;font-weight:800}
 .btn.danger{background:transparent;border:1.5px solid #E4B4AB;color:var(--danger);flex:0 0 auto;padding:0 16px}
 .cardDel{position:absolute;top:12px;right:14px;background:rgba(255,255,255,.16);color:#fff;font-weight:700;
   font-size:13px;padding:6px 12px;border-radius:8px;cursor:pointer}
@@ -794,7 +796,7 @@ var API_SECRET = '';
 
 /* Bump this on every page change — the number shows in the bottom-right corner so you can
    confirm a reload actually picked up the latest page (an old cached page has no tag). */
-var APP_VERSION = 'v98';
+var APP_VERSION = 'v99';
 
 /* Call a backend function: callApi('fn', [arg1, arg2]) -> Promise(result). */
 function callApi(fn, args){
@@ -825,7 +827,7 @@ var DATA = {ends:[],cans:[],plastics:[]};
 </script>
 <script>
 /* ====== APP LOGIC ====== */
-const state = { dept:null, metalKind:'ends', entries:{metals:[], plastics:[]}, lots:{metals:[], plastics:[]}, verifyEntries:{metals:[], plastics:[]}, verifyRole:'', current:null, building:'', locNum:'', mode:'scan' };
+const state = { dept:null, metalKind:'ends', entries:{metals:[], plastics:[]}, lots:{metals:[], plastics:[]}, verifyEntries:{metals:[], plastics:[]}, verifyRole:'', current:null, building:'', locNum:'', mode:'scan', pendingLoc:'' };
 var rowSkips = {};   // per-location products the user marked "not here" in Count-by-Row (transient)
 
 /* Buildings for the Location box: pick a building, type just the number.
@@ -2278,7 +2280,13 @@ function selectItem(it, edit){
   // enforces it), so a carried-over number can't silently send a scan to the wrong spot. Count-by-row
   // still carries it (that mode walks locations on purpose). Building stays on the current one.
   const scanBlank = (state.mode==='scan');
-  const locParts = ed ? parseLoc(ed.loc) : (pre&&pre.loc ? parseLoc(pre.loc) : { bldg: state.building, num: (scanBlank ? '' : (state.locNum||'')) });
+  // "Add another product here" sets a one-shot pending location that pre-fills THIS card only.
+  const pend = (!ed && !pre && state.pendingLoc) ? parseLoc(state.pendingLoc) : null;
+  const locParts = ed ? parseLoc(ed.loc)
+    : (pre&&pre.loc) ? parseLoc(pre.loc)
+    : pend ? pend
+    : { bldg: state.building, num: (scanBlank ? '' : (state.locNum||'')) };
+  if(pend) state.pendingLoc='';   // consume the one-shot so later scans start blank again
   const vBldg = locParts.bldg;   // editing shows the entry's building; a new scan uses the current one
   const vNum  = esc(locParts.num || '');
   const bldgOpts = ['<option value="">—</option>'].concat(
@@ -2986,9 +2994,23 @@ function renderRecent(){
        <div class="loc">📍 ${esc(e.loc||'no location')}</div>
      </div>
      <div class="qty"><div class="big">${big}</div><small class="tot">${tot.toLocaleString()} units</small></div>
-     <button class="editbtn" onclick="editEntry(${i})" aria-label="Edit entry">✎</button>
+     <div class="acts">
+       <button class="editbtn" onclick="editEntry(${i})" aria-label="Edit entry">✎</button>
+       <button class="editbtn addbtn" onclick="addHere(${i})" aria-label="Add another product at this location" title="Add another product here">➕</button>
+     </div>
    </div>`;
   }).join('');
+}
+// "Add another product here": pre-fill the NEXT product card's location (building + number) with this
+// entry's location — for that one entry only. It does not change the sticky building/location; after
+// the next card is built the pre-fill is consumed and later scans start blank again.
+function addHere(i){
+  const e = workingList()[i]; if(!e) return;
+  state.pendingLoc = e.loc || '';
+  state.editIndex=null; clearCardOnly(); $('notFound').classList.add('hide');
+  toast('Next product → 📍 '+(e.loc||'(no location)'));
+  if(state.mode==='row'){ const rp=$('rowPanel'); if(rp) rp.classList.add('hide'); }
+  focusScan();
 }
 function clearSession(){
   const list=activeEntries();

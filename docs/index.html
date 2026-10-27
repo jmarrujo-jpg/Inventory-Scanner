@@ -794,7 +794,7 @@ var API_SECRET = '';
 
 /* Bump this on every page change — the number shows in the bottom-right corner so you can
    confirm a reload actually picked up the latest page (an old cached page has no tag). */
-var APP_VERSION = 'v97';
+var APP_VERSION = 'v98';
 
 /* Call a backend function: callApi('fn', [arg1, arg2]) -> Promise(result). */
 function callApi(fn, args){
@@ -2143,7 +2143,11 @@ async function chooseItem(it){
   // Option-style check value: the Type cell is literally "Check Value", OR the Description itself
   // lists "value"(label) options. Either way the Description holds the spec.
   const descSpec = parseCheckSpec(item.desc);
-  if(norm(item.type)==='CHECK VALUE' || (descSpec && descSpec.options.length)){
+  // "Check Value" lives in the Type cell. On Ends_Lookup that's column E (Type) and the spec/formula
+  // is in column B (Description -> item.desc); on Plastics it's column C. Match the Type tolerantly
+  // (casing/spacing: "Check Value", "check value", "CheckValue", "Check-Value") so Ends triggers too.
+  const isCheckVal = /check\s*-?\s*value/i.test(item.type||'');
+  if(isCheckVal || (descSpec && descSpec.options.length)){
     const chosen = await resolveCheckSpec(descSpec, item.code);
     if(chosen===null){ focusScan(); return; }               // cancelled — abort this scan
     item.code = appendCode(item.code, chosen);              // attach the chosen VALUE (space or direct)
@@ -2180,6 +2184,24 @@ function askOption(title, options, code){
     m.classList.remove('hide');
     function finish(v){ m.classList.add('hide'); box.onclick=null; $('optCancel').onclick=null; resolve(v); }
     box.onclick=function(e){ const b=e.target.closest('button[data-i]'); if(!b) return; finish(options[Number(b.getAttribute('data-i'))].value); };
+    $('optCancel').onclick=function(){ finish(null); };
+  });
+}
+// Count Verification: the Primary's count and the Secondary's count differ. Ask which one is the real
+// count. Resolves to 'primary', 'secondary', or null (Cancel = go back and recount). Whichever is
+// chosen is the number that gets saved to real inventory.
+function askMismatch(entry, primaryTot, secTot){
+  return new Promise(function(resolve){
+    const m=$('optModal');
+    $('optTitle').textContent='⚠ Counts differ — which is correct?';
+    $('optHint').textContent=(entry.desc||entry.code||'')+'  ·  📍 '+(entry.loc||'');
+    const box=$('optBtns');
+    box.innerHTML=
+      '<button type="button" class="btn primary optbtn" data-v="primary">Primary count is correct · '+(Number(primaryTot)||0).toLocaleString()+' units</button>'+
+      '<button type="button" class="btn primary optbtn" data-v="secondary">Secondary count is correct · '+(Number(secTot)||0).toLocaleString()+' units</button>';
+    m.classList.remove('hide');
+    function finish(v){ m.classList.add('hide'); box.onclick=null; $('optCancel').onclick=null; resolve(v); }
+    box.onclick=function(e){ const b=e.target.closest('button[data-v]'); if(!b) return; finish(b.getAttribute('data-v')); };
     $('optCancel').onclick=function(){ finish(null); };
   });
 }
@@ -2811,11 +2833,19 @@ async function saveEntry(){
     try{ await loadVerifyIndex(); }catch(_){ }   // pull the Secondary's latest before comparing
     const sec = secondaryFor(state.dept, entry.code, entry.loc);
     if(sec){
-      if((Number(sec.total)||0)===total){ verifyNote=' · ✓ counts are the same'; }
+      const secTot=Number(sec.total)||0;
+      if(secTot===total){ verifyNote=' · ✓ counts are the same'; }
       else {
-        const ok = confirm('⚠ Count mismatch at '+entry.loc+'\n\n'+(entry.desc||entry.code)+'\n\nSecondary counted: '+(Number(sec.total)||0).toLocaleString()+'\nYou counted: '+total.toLocaleString()+'\n\nSave YOUR count as the source of truth?');
-        if(!ok){ _saving=false; const f=$('f_full'); if(f){ f.focus(); if(f.select) f.select(); kpBind('f_full'); } return; }   // Go back and recount
-        verifyNote=' · ⚠ differs (secondary had '+(Number(sec.total)||0).toLocaleString()+')';
+        // Counts differ — let the Primary choose which count is correct; whichever is picked is saved.
+        const pick = await askMismatch(entry, total, secTot);
+        if(pick===null){ _saving=false; const f=$('f_full'); if(f){ f.focus(); if(f.select) f.select(); kpBind('f_full'); } return; }  // go back and recount
+        if(pick==='secondary'){
+          // Save the Secondary's numbers instead of the Primary's.
+          entry.per=Number(sec.per)||entry.per; entry.full=Number(sec.full)||0; entry.extra=Number(sec.extra)||0; entry.total=secTot;
+          verifyNote=' · ✓ secondary count used ('+secTot.toLocaleString()+')';
+        } else {
+          verifyNote=' · ✓ primary count used (secondary had '+secTot.toLocaleString()+')';
+        }
       }
     } else { verifyNote=' · no secondary count here yet'; }
   }
@@ -2836,7 +2866,7 @@ async function saveEntry(){
       activeEntries().unshift(entry);
       persistSession();
       renderRecent();
-      toast('Saved · '+total.toLocaleString()+' units'+verifyNote);
+      toast('Saved · '+(Number(entry.total)||total).toLocaleString()+' units'+verifyNote);
       clearCardOnly();
       if(state.mode==='row'){ renderRowPanel(); } else { focusScan(); }
       // Re-read from the sheet so the just-added row gets its real tab/row reference. Without this

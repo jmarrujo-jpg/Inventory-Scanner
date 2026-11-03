@@ -803,7 +803,7 @@ var API_SECRET = '';
 
 /* Bump this on every page change — the number shows in the bottom-right corner so you can
    confirm a reload actually picked up the latest page (an old cached page has no tag). */
-var APP_VERSION = 'v102';
+var APP_VERSION = 'v103';
 
 /* Call a backend function: callApi('fn', [arg1, arg2]) -> Promise(result). */
 function callApi(fn, args){
@@ -2289,6 +2289,15 @@ function deleteEntry(){
 }
 
 /* ---- item card ---- */
+// Boxes-per-pallet choices for the pallet helper, or null when it shouldn't show.
+//  • Metals ENDS  → 24 / 32 / 40 / 48
+//  • Plastics LIDS (Type column = "Lid") → 16 / 18 / 20 / 25
+// Lids are detected by the lookup's Type field (clean values Pail / Tub / Lid), not the description.
+function bppOptionsFor(dept, kind, it){
+  if(dept==='metals' && kind==='ends') return [24,32,40,48];
+  if(dept==='plastics' && /^lid/i.test(String((it&&it.type)||'').trim())) return [16,18,20,25];
+  return null;
+}
 function selectItem(it, edit){
   $('notFound').classList.add('hide');
   state.current=it;
@@ -2331,7 +2340,10 @@ function selectItem(it, edit){
   const vBpp = ed ? (Number(ed.bpp)||0) : (pre?(Number(pre.bpp)||0):0);
   const vFull = Math.max(0, vFullTot - vPlt*vBpp);   // loose boxes shown in the Box field
   const vExtra= ed ? (Number(ed.extra)||0) : (pre?(Number(pre.extra)||0):0);
-  const showPallets = (dept==='plastics');   // boxed items that sit on pallets
+  // Which boxes-per-pallet choices to offer (if any): Ends use 24/32/40/48; plastics LIDS use
+  // 16/18/20/25. Everything else counts the old way with no pallet helper.
+  const bppOpts = bppOptionsFor(dept, kind, it);
+  const showPallets = !!bppOpts;
 
   let extraFields='';
   if(dept==='metals' && kind==='ends'){
@@ -2363,10 +2375,7 @@ function selectItem(it, edit){
         ${showPallets?`
         <div class="fld full bpp-row"><label>Pallets <span class="hint-bpp">— tap boxes per pallet</span></label>
           <div class="bpp-chips" id="bppChips">
-            <button type="button" class="chip" data-bpp="24" onclick="setBpp(24)">24</button>
-            <button type="button" class="chip" data-bpp="32" onclick="setBpp(32)">32</button>
-            <button type="button" class="chip" data-bpp="40" onclick="setBpp(40)">40</button>
-            <button type="button" class="chip" data-bpp="48" onclick="setBpp(48)">48</button>
+            ${(bppOpts||[]).map(n=>`<button type="button" class="chip" data-bpp="${n}" onclick="setBpp(${n})">${n}</button>`).join('')}
           </div>
           <input type="hidden" id="f_bpp" value="${vBpp||''}">
           <div class="biginput">

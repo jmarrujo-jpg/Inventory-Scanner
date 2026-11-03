@@ -52,7 +52,7 @@ export default {
       new Response(JSON.stringify(obj), { status, headers: { ...cors, 'Content-Type': 'application/json' } });
 
     if (request.method === 'OPTIONS') return new Response(null, { status: 204, headers: cors });
-    if (request.method === 'GET') return json({ ok: true, service: 'inventory-count-api', build: 'v15-verify' }, 200);
+    if (request.method === 'GET') return json({ ok: true, service: 'inventory-count-api', build: 'v16-endsbpp' }, 200);
     if (request.method !== 'POST') return json({ ok: false, error: 'Method not allowed' }, 405);
 
     let payload;
@@ -228,9 +228,9 @@ function num_(v) {
 }
 
 // ---------------- backend functions ----------------
-// Ends_Lookup:     Label Code  | Description | Per Pallet     | Weight | Type
+// Ends_Lookup:     Label Code  | Description | Per Pallet | Boxes Per Pallet | Weight | Type
 // Cans_Lookup:     Label Number | Description | Per Pallet
-// Plastics_Lookup: Item #       | Description | Type           | Per Pallet/Box
+// Plastics_Lookup: Item #       | Description | Type       | Per Pallet/Box
 async function getLookups(sheets) {
   const [ends, cans, plastics] = await Promise.all([
     sheets.rows(TAB.ends),
@@ -239,7 +239,7 @@ async function getLookups(sheets) {
   ]);
   return {
     ends: ends.filter((r) => str_(r[1])).map((r) => ({
-      code: str_(r[0]), desc: str_(r[1]), perUnit: num_(r[2]), weight: str_(r[3]), type: str_(r[4]),
+      code: str_(r[0]), desc: str_(r[1]), perUnit: num_(r[2]), bpp: num_(r[3]), weight: str_(r[4]), type: str_(r[5]),
     })),
     cans: cans.filter((r) => str_(r[1])).map((r) => ({
       code: str_(r[0]), desc: str_(r[1]), perUnit: num_(r[2]),

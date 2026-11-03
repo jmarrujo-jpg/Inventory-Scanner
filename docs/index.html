@@ -803,7 +803,7 @@ var API_SECRET = '';
 
 /* Bump this on every page change — the number shows in the bottom-right corner so you can
    confirm a reload actually picked up the latest page (an old cached page has no tag). */
-var APP_VERSION = 'v103';
+var APP_VERSION = 'v104';
 
 /* Call a backend function: callApi('fn', [arg1, arg2]) -> Promise(result). */
 function callApi(fn, args){
@@ -2172,14 +2172,13 @@ function appendCode(base, chosen){
 // Scan/pick entry point: resolve any check values first (via popup), then open the card.
 async function chooseItem(it){
   let item = Object.assign({}, it);   // don't mutate the lookup row
-  // Option-style check value: the Type cell is literally "Check Value", OR the Description itself
-  // lists "value"(label) options. Either way the Description holds the spec.
-  const descSpec = parseCheckSpec(item.desc);
-  // "Check Value" lives in the Type cell. On Ends_Lookup that's column E (Type) and the spec/formula
-  // is in column B (Description -> item.desc); on Plastics it's column C. Match the Type tolerantly
-  // (casing/spacing: "Check Value", "check value", "CheckValue", "Check-Value") so Ends triggers too.
+  // Option-style check value: the Type cell must literally say "Check Value" — THEN the Description
+  // holds the spec (the "value"(label) options). We no longer trigger this just because a description
+  // happens to contain quotes: a normal item like  HD HI VIS WHT "HOLE"  (Type "Lid") was wrongly
+  // opening a one-option picker. The Type field is the switch; the Description is only the formula.
   const isCheckVal = /check\s*-?\s*value/i.test(item.type||'');
-  if(isCheckVal || (descSpec && descSpec.options.length)){
+  const descSpec = isCheckVal ? parseCheckSpec(item.desc) : null;
+  if(isCheckVal){
     const chosen = await resolveCheckSpec(descSpec, item.code);
     if(chosen===null){ focusScan(); return; }               // cancelled — abort this scan
     item.code = appendCode(item.code, chosen);              // attach the chosen VALUE (space or direct)
@@ -2290,12 +2289,25 @@ function deleteEntry(){
 
 /* ---- item card ---- */
 // Boxes-per-pallet choices for the pallet helper, or null when it shouldn't show.
-//  • Metals ENDS  → 24 / 32 / 40 / 48
-//  • Plastics LIDS (Type column = "Lid") → 16 / 18 / 20 / 25
+//  • Metals ENDS  → driven by the lookup's "Boxes Per Pallet" column; the item's own value is
+//    auto-selected on the card so the counter only enters pallets. Standard sizes 24/32/40/48 stay
+//    tappable as an override. Transition: an OLDER worker doesn't send bpp (it.bpp===undefined), so
+//    until it's redeployed we keep showing the standard chips; once it does, only MARKED ends show it.
+//  • Plastics LIDS (Type column = "Lid") → 16 / 18 / 20 / 25 (no column yet; always offered).
 // Lids are detected by the lookup's Type field (clean values Pail / Tub / Lid), not the description.
 function bppOptionsFor(dept, kind, it){
-  if(dept==='metals' && kind==='ends') return [24,32,40,48];
-  if(dept==='plastics' && /^lid/i.test(String((it&&it.type)||'').trim())) return [16,18,20,25];
+  const lookupBpp = Number(it&&it.bpp)||0;
+  if(dept==='metals' && kind==='ends'){
+    const base=[24,32,40,48];
+    if(lookupBpp>0 && base.indexOf(lookupBpp)<0){ base.push(lookupBpp); base.sort((a,b)=>a-b); }
+    if(it && it.bpp===undefined) return base;      // old worker, no column data yet → behave as before
+    return lookupBpp>0 ? base : null;              // column live → only items marked with a value
+  }
+  if(dept==='plastics' && /^lid/i.test(String((it&&it.type)||'').trim())){
+    const base=[16,18,20,25];
+    if(lookupBpp>0 && base.indexOf(lookupBpp)<0){ base.push(lookupBpp); base.sort((a,b)=>a-b); }
+    return base;
+  }
   return null;
 }
 function selectItem(it, edit){
@@ -2337,7 +2349,8 @@ function selectItem(it, edit){
   // (full − plt×bpp), and the saved `full` stays plt×bpp + loose so everything downstream is unchanged.
   const vFullTot = ed ? (Number(ed.full)||0) : (pre?(Number(pre.full)||0):0);
   const vPlt = ed ? (Number(ed.plt)||0) : (pre?(Number(pre.plt)||0):0);
-  const vBpp = ed ? (Number(ed.bpp)||0) : (pre?(Number(pre.bpp)||0):0);
+  // Fresh count: pre-select the item's own boxes/pallet from the lookup so the counter just enters pallets.
+  const vBpp = ed ? (Number(ed.bpp)||0) : (pre?(Number(pre.bpp)||0):(Number(it.bpp)||0));
   const vFull = Math.max(0, vFullTot - vPlt*vBpp);   // loose boxes shown in the Box field
   const vExtra= ed ? (Number(ed.extra)||0) : (pre?(Number(pre.extra)||0):0);
   // Which boxes-per-pallet choices to offer (if any): Ends use 24/32/40/48; plastics LIDS use

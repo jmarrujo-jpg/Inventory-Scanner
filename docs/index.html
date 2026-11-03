@@ -145,6 +145,13 @@ input,select{font-family:inherit;font-size:16px}
 .stepbtn:active{filter:brightness(.92)}
 .stepbtn.ok{background:var(--ok)}
 .fld input.rodisp[readonly]{background:var(--dept-soft);border-color:transparent;color:var(--dept);font-weight:700}
+/* boxes-per-pallet chooser (plastics) */
+.bpp-row label .hint-bpp{font-weight:600;color:var(--ink-soft);opacity:.75}
+.bpp-chips{display:flex;gap:7px}
+.bpp-chips .chip{flex:1;height:46px;border:1.5px solid var(--line);border-radius:10px;background:#fff;font-weight:800;font-size:17px;color:var(--ink-soft);font-family:'JetBrains Mono';cursor:pointer}
+.bpp-chips .chip:active{filter:brightness(.95)}
+.bpp-chips .chip.on{background:var(--dept);border-color:var(--dept);color:#fff}
+.pcalc{font-size:12px;font-weight:700;color:var(--dept);background:var(--dept-soft);border-radius:8px;padding:6px 10px;margin-top:-4px}
 /* docked number pad — slides up from the bottom like a native keyboard, only while a count box
    (Full/Extra/Location) is active. iOS won't summon its own keyboard on the programmatic focus
    after a scan, so those boxes use inputmode=none and this pad instead. */
@@ -796,7 +803,7 @@ var API_SECRET = '';
 
 /* Bump this on every page change — the number shows in the bottom-right corner so you can
    confirm a reload actually picked up the latest page (an old cached page has no tag). */
-var APP_VERSION = 'v101';
+var APP_VERSION = 'v102';
 
 /* Call a backend function: callApi('fn', [arg1, arg2]) -> Promise(result). */
 function callApi(fn, args){
@@ -1808,8 +1815,8 @@ function updateLogHint(){
   const mine=here.filter(function(r){ return norm(r.product)===norm(code) || (state.current.desc && norm(r.desc)===norm(state.current.desc)); });
   if(mine.length){
     const r=mine[0], last=mine.reduce(function(s,x){ return s+(Number(x.qty)||0); },0);
-    const per=asNum($('f_per')&&$('f_per').value), full=asNum($('f_full')&&$('f_full').value), extra=asNum($('f_extra')&&$('f_extra').value);
-    const cur=Math.round(full*per+extra);
+    const per=asNum($('f_per')&&$('f_per').value);
+    const cur=(typeof cardTotal==='function')?cardTotal():Math.round(asNum($('f_full')&&$('f_full').value)*per+asNum($('f_extra')&&$('f_extra').value));
     let delta='';
     if(cur>0){ const d=cur-last; delta = d===0 ? ' · <b>same as last</b>' : (d>0?' · <b class="up">+'+d.toLocaleString()+'</b>':' · <b class="down">'+d.toLocaleString()+'</b>'); }
     const bd=unitsBreakdown(last, per);
@@ -2315,8 +2322,16 @@ function selectItem(it, edit){
   const bldgOpts = ['<option value="">—</option>'].concat(
     BUILDINGS.map(b=>'<option value="'+b[0]+'"'+(b[0]===vBldg?' selected':'')+'>'+b[0]+' · '+b[1]+'</option>')
   ).join('');
-  const vFull = ed ? (Number(ed.full)||0) : (pre?(Number(pre.full)||0):0);
+  // `full` on an entry is the TOTAL full boxes. The pallet helper (plastics) lets a counter enter
+  // pallets + boxes/pallet instead of multiplying it out; we store pallets (plt) and boxes/pallet
+  // (bpp) too so an edit can show the same split. The Box field then holds only the LOOSE boxes
+  // (full − plt×bpp), and the saved `full` stays plt×bpp + loose so everything downstream is unchanged.
+  const vFullTot = ed ? (Number(ed.full)||0) : (pre?(Number(pre.full)||0):0);
+  const vPlt = ed ? (Number(ed.plt)||0) : (pre?(Number(pre.plt)||0):0);
+  const vBpp = ed ? (Number(ed.bpp)||0) : (pre?(Number(pre.bpp)||0):0);
+  const vFull = Math.max(0, vFullTot - vPlt*vBpp);   // loose boxes shown in the Box field
   const vExtra= ed ? (Number(ed.extra)||0) : (pre?(Number(pre.extra)||0):0);
+  const showPallets = (dept==='plastics');   // boxed items that sit on pallets
 
   let extraFields='';
   if(dept==='metals' && kind==='ends'){
@@ -2345,7 +2360,21 @@ function selectItem(it, edit){
         ${extraFields}
         <div class="fld full"><label>${perLabel}</label><input id="f_per" class="mono" inputmode="none" readonly value="${it.perUnit??''}" oninput="calc()" onfocus="this.select();kpBind('f_per')" onblur="kpOnBlur()"></div>
 
-        <div class="fld"><label>Full ${dept==='plastics'?'(pallets/boxes)':'(boxes)'}</label>
+        ${showPallets?`
+        <div class="fld full bpp-row"><label>Pallets <span class="hint-bpp">— tap boxes per pallet</span></label>
+          <div class="bpp-chips" id="bppChips">
+            <button type="button" class="chip" data-bpp="24" onclick="setBpp(24)">24</button>
+            <button type="button" class="chip" data-bpp="32" onclick="setBpp(32)">32</button>
+            <button type="button" class="chip" data-bpp="40" onclick="setBpp(40)">40</button>
+            <button type="button" class="chip" data-bpp="48" onclick="setBpp(48)">48</button>
+          </div>
+          <input type="hidden" id="f_bpp" value="${vBpp||''}">
+          <div class="biginput">
+            <input id="f_plt" class="big" inputmode="none" readonly enterkeyhint="next" value="${vPlt}" oninput="calc()" onfocus="this.select();lastCountField='f_plt';kpBind('f_plt')" onblur="kpOnBlur()" onkeydown="cardEnter(event,'f_full')">
+          </div></div>
+        <div class="fld full pcalc" id="palletCalc" hidden></div>`:''}
+
+        <div class="fld"><label>${showPallets?'Boxes':('Full '+(dept==='plastics'?'(pallets/boxes)':'(boxes)'))}</label>
           <div class="biginput">
             <input id="f_full" class="big" inputmode="none" readonly enterkeyhint="next" value="${vFull}" oninput="calc()" onfocus="this.select();lastCountField='f_full';kpBind('f_full')" onblur="kpOnBlur()" onkeydown="cardEnter(event,'f_extra')">
           </div></div>
@@ -2371,6 +2400,7 @@ function selectItem(it, edit){
       <button class="btn primary" id="f_save" onclick="saveEntry()">${ed?'✓ Update':'✓ Save entry'}</button>
     </div>
    </div>`;
+  if(showPallets && vBpp>0) markBpp(vBpp);   // restore the chosen boxes/pallet when editing
   calc();
   // Where to land first: manual add starts at Description; an item with no Per Pallet quantity
   // starts there so you fill it in; otherwise the Full box (perUnit already known).
@@ -2382,11 +2412,45 @@ function selectItem(it, edit){
     if(f){ f.focus(); if(f.select) f.select(); }   // the onfocus handler shows the pad + scrolls
   },80);
 }
+// Boxes/pallet chooser (plastics). markBpp just paints the chips + stores the value; setBpp also
+// recalcs and jumps to the Pallets box so the counter can type the count right away.
+function markBpp(n){
+  const hid=$('f_bpp'); if(hid) hid.value = n ? String(n) : '';
+  document.querySelectorAll('#bppChips .chip').forEach(function(c){ c.classList.toggle('on', Number(c.dataset.bpp)===Number(n)); });
+}
+function setBpp(n){
+  const hid=$('f_bpp');
+  // tapping the lit chip again clears it (back to plain box counting)
+  if(hid && Number(hid.value)===Number(n)) n=0;
+  markBpp(n);
+  calc();
+  if(n>0){ nextField('f_plt'); }
+}
+// Total full boxes from the card: pallets × boxes/pallet (if chosen) + loose boxes.
+function cardFullBoxes(){
+  const plt=asNum(($('f_plt')&&$('f_plt').value)||0);
+  const bpp=asNum(($('f_bpp')&&$('f_bpp').value)||0);
+  const boxes=asNum(($('f_full')&&$('f_full').value)||0);
+  return Math.round(plt*bpp + boxes);
+}
+// Grand total units = total full boxes × per + loose units.
+function cardTotal(){
+  const per=asNum(($('f_per')&&$('f_per').value)||0);
+  const extra=asNum(($('f_extra')&&$('f_extra').value)||0);
+  return Math.round(cardFullBoxes()*per + extra);
+}
 function calc(){
   if(!$('f_per')) return;
-  const per=asNum($('f_per').value), full=asNum($('f_full').value), extra=asNum($('f_extra').value);
-  const total=Math.round(full*per+extra);
+  const total=cardTotal();
   $('totalVal').textContent=total.toLocaleString();
+  // live pallet math under the Pallets row
+  const bd=$('palletCalc');
+  if(bd){
+    const plt=asNum(($('f_plt')&&$('f_plt').value)||0), bpp=asNum(($('f_bpp')&&$('f_bpp').value)||0);
+    const boxes=asNum(($('f_full')&&$('f_full').value)||0);
+    if(plt>0 && bpp>0){ bd.textContent='🧮 '+plt+' pallet'+(plt===1?'':'s')+' × '+bpp+(boxes>0?' + '+boxes.toLocaleString()+' loose box'+(boxes===1?'':'es'):'')+' = '+cardFullBoxes().toLocaleString()+' boxes'; bd.hidden=false; }
+    else { bd.hidden=true; }
+  }
   updateLogHint();   // live delta vs. the last logged count
 }
 /* Focus a box (the onfocus handler shows the pad and scrolls it into view). */
@@ -2416,7 +2480,7 @@ function scrollFieldUp(el, anchorSel){
 // single pointerdown (no mouse+touch double-firing) and edit whichever box is active.
 var activeNumField='f_full';
 var _kpFresh=false;   // when true, the next digit replaces the field (used for the row # box)
-function kpIsField(id){ return id==='f_per'||id==='f_full'||id==='f_extra'||id==='f_loc'||id==='rowNum'||id==='topLoc'||id==='f_lotdate'||id==='f_pallets'; }
+function kpIsField(id){ return id==='f_per'||id==='f_plt'||id==='f_full'||id==='f_extra'||id==='f_loc'||id==='rowNum'||id==='topLoc'||id==='f_lotdate'||id==='f_pallets'; }
 /* When true, the docked pads stay put and ignore tap-away / blur. Set while a count-card field or the
    search box is active, so the keyboard never disappears mid-entry. Cleared on Save, Cancel, mode
    switch, leaving search, or tapping the Scan box. Switching between the two pads is explicit
@@ -2429,7 +2493,7 @@ function kpBind(id){
   activeNumField=id;
   kbLock = (id!=='rowNum' && id!=='topLoc');            // count boxes stay locked open; location/row boxes don't
   _kpFresh = (id==='rowNum'||id==='topLoc'||id==='f_loc'); // start fresh: first digit replaces the carried-over number
-  const l=$('kpField'); if(l){ l.textContent=({f_per:'Per unit',f_full:'Full',f_extra:'Extra',f_loc:'Location #',rowNum:'Row #',topLoc:'Location #',f_lotdate:'Lot date',f_pallets:'Pallets'})[id]; }
+  const l=$('kpField'); if(l){ l.textContent=({f_per:'Per unit',f_plt:'Pallets',f_full:'Boxes',f_extra:'Extra',f_loc:'Location #',rowNum:'Row #',topLoc:'Location #',f_lotdate:'Lot date',f_pallets:'Pallets'})[id]; }
   kpShow();
   const el=$(id); if(el){ setTimeout(()=>scrollFieldUp(el, id==='f_loc'?'.total-strip':null),40); } // keep it above the pad
 }
@@ -2472,6 +2536,7 @@ function kpAdvance(){
     return;
   }
   if(activeNumField==='f_per'){ nextField('f_full'); }
+  else if(activeNumField==='f_plt'){ nextField('f_full'); }
   else if(activeNumField==='f_full'){ nextField('f_extra'); }
   else if(activeNumField==='f_extra'){ nextField('f_loc'); }
   else { saveEntry(); }
@@ -2806,8 +2871,16 @@ function renderVerifyRecent(){
 async function saveEntry(){
   if(_saving) return;                 // already saving — ignore the second tap
   _saving=true;
-  const per=asNum($('f_per').value), full=asNum($('f_full').value), extra=asNum($('f_extra').value);
-  const total=Math.round(full*per+extra);
+  const per=asNum($('f_per').value), extra=asNum($('f_extra').value);
+  const plt=asNum(($('f_plt')&&$('f_plt').value)||0), bpp=asNum(($('f_bpp')&&$('f_bpp').value)||0);
+  // Pallets entered but no boxes-per-pallet chosen — they'd silently count as nothing. Stop and ask.
+  if(plt>0 && bpp<=0){
+    toast('Tap boxes per pallet (24/32/40/48) first','err'); _saving=false;
+    const f=$('f_plt'); if(f){ f.focus(); if(f.select) f.select(); kpBind('f_plt'); }
+    return;
+  }
+  const full=cardFullBoxes();   // pallets × boxes/pallet + loose boxes
+  const total=cardTotal();
   if(total<=0){ toast('Enter a count greater than 0','err'); _saving=false; return; }
   // Must have a location (building + number) before saving.
   const bNow = ($('f_bldg')&&$('f_bldg').value||'').trim();
@@ -2840,6 +2913,7 @@ async function saveEntry(){
     weight:($('f_weight')?.value||'').trim(),
     type:($('f_type')?.value||'').trim(),
     per, full, extra, total,
+    plt, bpp,   // kept so an edit can show the pallet split again (full already folds them in)
     loc: composeLoc()
   };
   if(editing && ref){ entry.__tab=ref.__tab; entry.__row=ref.__row; }
@@ -3005,15 +3079,23 @@ function renderRecent(){
   const note = fs ? '<div class="recent-note">Showing '+items.length+' at “'+esc(recentLocFilter)+'” · <span class="linkbtn" onclick="clearRecentFilter()">Show all</span></div>' : '';
   el.innerHTML=note+items.map(({e,i})=>{
     const full=Number(e.full)||0, extra=Number(e.extra)||0, tot=Number(e.total)||0;
+    const plt=Number(e.plt)||0, bpp=Number(e.bpp)||0;
     let big='';
-    if(full>0) big+=`${full.toLocaleString()}<small>plt</small>`;
-    if(extra>0) big+=`${full>0?'<span class="sep">+</span>':''}${extra.toLocaleString()}<small>loose</small>`;
+    if(plt>0 && bpp>0){
+      const loose=Math.max(0, full - plt*bpp);
+      big+=`${plt.toLocaleString()}<small>plt</small>`;
+      if(loose>0) big+=`<span class="sep">+</span>${loose.toLocaleString()}<small>box</small>`;
+      if(extra>0) big+=`<span class="sep">+</span>${extra.toLocaleString()}<small>loose</small>`;
+    } else {
+      if(full>0) big+=`${full.toLocaleString()}<small>plt</small>`;
+      if(extra>0) big+=`${full>0?'<span class="sep">+</span>':''}${extra.toLocaleString()}<small>loose</small>`;
+    }
     if(!big) big=`0<small>plt</small>`;
     return `<div class="entry">
      <div class="info">
        <div class="c">${esc(e.code||'no barcode')} · <span style="opacity:.7">${esc(e.category)}</span></div>
        <div class="d">${esc(e.desc)}</div>
-       <div class="m">${Number(e.per)>0?`${e.per} per pallet · `:''}${esc(e.counter)}</div>
+       <div class="m">${(plt>0&&bpp>0)?`${bpp} boxes/pallet · `:''}${Number(e.per)>0?`${e.per} per pallet · `:''}${esc(e.counter)}</div>
        <div class="loc">📍 ${esc(e.loc||'no location')}</div>
      </div>
      <div class="qty"><div class="big">${big}</div><small class="tot">${tot.toLocaleString()} units</small></div>

@@ -803,7 +803,7 @@ var API_SECRET = '';
 
 /* Bump this on every page change — the number shows in the bottom-right corner so you can
    confirm a reload actually picked up the latest page (an old cached page has no tag). */
-var APP_VERSION = 'v104';
+var APP_VERSION = 'v105';
 
 /* Call a backend function: callApi('fn', [arg1, arg2]) -> Promise(result). */
 function callApi(fn, args){
@@ -2430,6 +2430,7 @@ function selectItem(it, edit){
     let startId='f_full';
     if(it.__manual) startId = $('f_desc') ? 'f_desc' : 'f_per';
     else if(!ed && !String(it.perUnit==null?'':it.perUnit).trim()) startId='f_per';
+    else if(showPallets && dept==='metals' && kind==='ends') startId='f_plt';  // Ends: count by pallets first
     const f=$(startId);
     if(f){ f.focus(); if(f.select) f.select(); }   // the onfocus handler shows the pad + scrolls
   },80);

@@ -71,6 +71,8 @@ input,select{font-family:inherit;font-size:16px}
 .topbar .who input{background:rgba(255,255,255,.16);border:1px solid rgba(255,255,255,.25);color:#fff;border-radius:7px;
   padding:3px 8px;font-size:12px;width:120px}
 .topbar .who input::placeholder{color:rgba(255,255,255,.7)}
+.topbar .who .verword{text-transform:uppercase;letter-spacing:.08em;opacity:.8}
+.topbar .who b{font-family:'JetBrains Mono',monospace;font-weight:800;letter-spacing:.04em}
 .count-badge{background:rgba(0,0,0,.22);border-radius:9px;padding:6px 11px;text-align:center;flex:none}
 .count-badge b{display:block;font-family:'JetBrains Mono';font-size:19px;line-height:1}
 .count-badge small{font-size:10px;opacity:.8;letter-spacing:.08em;text-transform:uppercase}
@@ -471,12 +473,19 @@ html.modal-lock body{position:fixed;left:0;right:0;width:100%;overflow:hidden}
       <button class="back" onclick="goHome()" aria-label="Back">←</button>
       <div class="title">
         <div class="dpt" id="deptTitle">Metals</div>
-        <div class="who">Counter: <input id="counterName" placeholder="your name" autocomplete="off"></div>
+        <div class="who"><span class="verword">Version</span> <b id="appVerTop">—</b></div>
       </div>
+      <!-- counter name no longer shown; kept hidden so the Counter column still fills with the dept default -->
+      <input type="hidden" id="counterName" autocomplete="off">
       <div class="count-badge"><b id="sessCount">0</b><small>entries</small></div>
     </div>
 
     <div class="body">
+      <div class="bldgbar" id="bldgBar">
+        <span class="bldglbl">Location</span>
+        <select id="topBldg" onchange="setBuilding(this.value)"></select>
+        <button type="button" class="mapbtn" id="mapBtn" onclick="openMap()">🗺 Map</button>
+      </div>
       <div class="modeseg" id="modeSeg">
         <button type="button" id="modeScan" class="on" onclick="setMode('scan')">🔍 Scan item</button>
         <button type="button" id="modeRow" onclick="setMode('row')">▦ Count by row</button>
@@ -495,12 +504,6 @@ html.modal-lock body{position:fixed;left:0;right:0;width:100%;overflow:hidden}
           <option value="primary">Primary — source of truth (verifies)</option>
         </select>
         <span class="vstatus" id="verifyStatus"></span>
-      </div>
-
-      <div class="bldgbar" id="bldgBar">
-        <span class="bldglbl">Building</span>
-        <select id="topBldg" onchange="setBuilding(this.value)"></select>
-        <button type="button" class="mapbtn" id="mapBtn" onclick="openMap()">🗺 Map</button>
       </div>
 
       <div class="scanbay" id="scanbay">
@@ -803,7 +806,7 @@ var API_SECRET = '';
 
 /* Bump this on every page change — the number shows in the bottom-right corner so you can
    confirm a reload actually picked up the latest page (an old cached page has no tag). */
-var APP_VERSION = 'v109';
+var APP_VERSION = 'v110';
 
 /* Call a backend function: callApi('fn', [arg1, arg2]) -> Promise(result). */
 function callApi(fn, args){
@@ -3393,6 +3396,7 @@ if(!hasMapData()){ var _mb=$('mapBtn'); if(_mb) _mb.style.display='none'; }
 
 /* show the build/version tag */
 $('buildTag').textContent = APP_VERSION;
+{ const vt=$('appVerTop'); if(vt) vt.textContent = APP_VERSION; }
 
 /* ---- persist counter name + resume the saved session on open ---- */
 $('counterName').addEventListener('input', persistSession);

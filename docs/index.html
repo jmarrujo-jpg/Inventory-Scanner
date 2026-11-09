@@ -764,7 +764,7 @@ html.modal-lock body{position:fixed;left:0;right:0;width:100%;overflow:hidden}
   border-radius:20px;font-family:'Archivo',sans-serif;font-weight:800;font-size:13px;color:var(--ink-soft);white-space:nowrap;cursor:pointer}
 .maptabs button.on{background:var(--dept);border-color:var(--dept);color:#fff}
 .mapwrap{position:relative;flex:1;min-height:0}
-.mapscroll{position:absolute;inset:0;overflow:auto;-webkit-overflow-scrolling:touch;background:#fff;touch-action:pan-x pan-y}
+.mapscroll{position:absolute;inset:0;overflow:auto;background:#fff;touch-action:pan-x pan-y;overflow-anchor:none}
 #mapStage{padding:10px}
 #mapStage svg{display:block;background:#fff}
 #mapStage svg text{font-family:'JetBrains Mono',monospace;pointer-events:none}
@@ -803,7 +803,7 @@ var API_SECRET = '';
 
 /* Bump this on every page change — the number shows in the bottom-right corner so you can
    confirm a reload actually picked up the latest page (an old cached page has no tag). */
-var APP_VERSION = 'v108';
+var APP_VERSION = 'v109';
 
 /* Call a backend function: callApi('fn', [arg1, arg2]) -> Promise(result). */
 function callApi(fn, args){
@@ -3287,6 +3287,7 @@ function mapRect(r, extra){
 // rebuild, so the map doesn't jump or reset scroll/zoom when you tap a bin.
 function highlightMap(){
   var svg = $('mapStage').querySelector('svg'); if(!svg) return;
+  var sc = $('mapScroll'), sx = sc?sc.scrollLeft:0, sy = sc?sc.scrollTop:0;
   var cur = currentLocId(), counted = countedLocSet();
   Array.prototype.forEach.call(svg.querySelectorAll('rect[data-loc]'), function(rc){
     var id = rc.getAttribute('data-loc');
@@ -3295,6 +3296,7 @@ function highlightMap(){
     rc.setAttribute('stroke-width', isCur?60:(isDone?42:14));
   });
   $('mapSel').textContent = cur ? ('In: '+cur) : '';
+  if(sc){ sc.scrollLeft = sx; sc.scrollTop = sy; }   // iOS: keep position if a mutation nudges scroll
 }
 function renderMap(){
   var v = MAP_DATA[_mapKey]; if(!v){ return; }

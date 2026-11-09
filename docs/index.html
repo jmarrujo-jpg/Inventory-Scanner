@@ -803,7 +803,7 @@ var API_SECRET = '';
 
 /* Bump this on every page change — the number shows in the bottom-right corner so you can
    confirm a reload actually picked up the latest page (an old cached page has no tag). */
-var APP_VERSION = 'v107';
+var APP_VERSION = 'v108';
 
 /* Call a backend function: callApi('fn', [arg1, arg2]) -> Promise(result). */
 function callApi(fn, args){
@@ -3283,9 +3283,21 @@ function sizeMapSvg(){
 function mapRect(r, extra){
   return '<rect x="'+r.x+'" y="'+r.y+'" width="'+r.w+'" height="'+r.h+'" '+(extra||'')+'/>';
 }
-function renderMap(keepScroll){
+// Repaint just the "you are here" / counted borders on the existing SVG — no innerHTML
+// rebuild, so the map doesn't jump or reset scroll/zoom when you tap a bin.
+function highlightMap(){
+  var svg = $('mapStage').querySelector('svg'); if(!svg) return;
+  var cur = currentLocId(), counted = countedLocSet();
+  Array.prototype.forEach.call(svg.querySelectorAll('rect[data-loc]'), function(rc){
+    var id = rc.getAttribute('data-loc');
+    var isCur = cur && id===cur, isDone = counted[norm(id)];
+    rc.setAttribute('stroke', isCur?'#C0392B':(isDone?'#2E7D48':'#333'));
+    rc.setAttribute('stroke-width', isCur?60:(isDone?42:14));
+  });
+  $('mapSel').textContent = cur ? ('In: '+cur) : '';
+}
+function renderMap(){
   var v = MAP_DATA[_mapKey]; if(!v){ return; }
-  var sc0 = $('mapScroll'), sx = keepScroll&&sc0?sc0.scrollLeft:0, sy = keepScroll&&sc0?sc0.scrollTop:0;
   // active tab
   Array.prototype.forEach.call($('mapTabs').children, function(b){
     b.classList.toggle('on', b.getAttribute('data-k')===_mapKey);
@@ -3313,7 +3325,7 @@ function renderMap(keepScroll){
     var stroke = isCur ? '#C0392B' : (isDone ? '#2E7D48' : '#333');
     var sw = isCur ? 60 : (isDone ? 42 : 14);
     out.push('<g onclick="mapPick(\''+r.id+'\')" style="cursor:pointer">');
-    out.push(mapRect(r,'fill="'+(r.fill||'#ccc')+'" fill-opacity="'+(isDone?0.95:0.82)+'" stroke="'+stroke+'" stroke-width="'+sw+'"'));
+    out.push(mapRect(r,'data-loc="'+esc(r.id)+'" fill="'+(r.fill||'#ccc')+'" fill-opacity="'+(isDone?0.95:0.82)+'" stroke="'+stroke+'" stroke-width="'+sw+'"'));
     var len = r.id.length, fs = Math.max(34, Math.min(r.h*0.62, r.w/(len*0.6)));
     out.push('<text x="'+(r.x+r.w/2)+'" y="'+(r.y+r.h/2)+'" font-size="'+fs+'" fill="#161A1F" text-anchor="middle" dominant-baseline="central">'+esc(r.id)+'</text>');
     if(isDone) out.push('<text x="'+(r.x+r.w-30)+'" y="'+(r.y+40)+'" font-size="90" fill="#2E7D48" text-anchor="end">✓</text>');
@@ -3323,7 +3335,6 @@ function renderMap(keepScroll){
   $('mapStage').innerHTML = out.join('');
   $('mapSel').textContent = cur ? ('In: '+cur) : '';
   sizeMapSvg();
-  if(keepScroll && sc0){ sc0.scrollLeft = sx; sc0.scrollTop = sy; }   // don't jump when just re-highlighting
 }
 
 // tap a bin → make it the universal "location you're in"
@@ -3335,7 +3346,7 @@ function mapPick(id){
   else { state.building = letter; persistSession(); var tb=$('topBldg'); if(tb) tb.value=letter; }
   setLocNum(digits, null);
   toast('Location set: '+letter+'-'+digits.padStart(3,'0'),'ok');
-  renderMap(true);   // refresh the highlight, keep where you're zoomed/scrolled
+  highlightMap();   // recolor in place — no rebuild, no jump
 }
 
 window.addEventListener('resize', function(){ if(!$('mapOverlay').classList.contains('hide')) sizeMapSvg(); });

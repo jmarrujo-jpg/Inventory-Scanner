@@ -803,7 +803,7 @@ var API_SECRET = '';
 
 /* Bump this on every page change — the number shows in the bottom-right corner so you can
    confirm a reload actually picked up the latest page (an old cached page has no tag). */
-var APP_VERSION = 'v106';
+var APP_VERSION = 'v107';
 
 /* Call a backend function: callApi('fn', [arg1, arg2]) -> Promise(result). */
 function callApi(fn, args){
@@ -3283,8 +3283,9 @@ function sizeMapSvg(){
 function mapRect(r, extra){
   return '<rect x="'+r.x+'" y="'+r.y+'" width="'+r.w+'" height="'+r.h+'" '+(extra||'')+'/>';
 }
-function renderMap(){
+function renderMap(keepScroll){
   var v = MAP_DATA[_mapKey]; if(!v){ return; }
+  var sc0 = $('mapScroll'), sx = keepScroll&&sc0?sc0.scrollLeft:0, sy = keepScroll&&sc0?sc0.scrollTop:0;
   // active tab
   Array.prototype.forEach.call($('mapTabs').children, function(b){
     b.classList.toggle('on', b.getAttribute('data-k')===_mapKey);
@@ -3322,6 +3323,7 @@ function renderMap(){
   $('mapStage').innerHTML = out.join('');
   $('mapSel').textContent = cur ? ('In: '+cur) : '';
   sizeMapSvg();
+  if(keepScroll && sc0){ sc0.scrollLeft = sx; sc0.scrollTop = sy; }   // don't jump when just re-highlighting
 }
 
 // tap a bin → make it the universal "location you're in"
@@ -3333,7 +3335,7 @@ function mapPick(id){
   else { state.building = letter; persistSession(); var tb=$('topBldg'); if(tb) tb.value=letter; }
   setLocNum(digits, null);
   toast('Location set: '+letter+'-'+digits.padStart(3,'0'),'ok');
-  renderMap();   // refresh the highlight
+  renderMap(true);   // refresh the highlight, keep where you're zoomed/scrolled
 }
 
 window.addEventListener('resize', function(){ if(!$('mapOverlay').classList.contains('hide')) sizeMapSvg(); });

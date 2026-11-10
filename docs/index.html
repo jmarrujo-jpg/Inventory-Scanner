@@ -806,7 +806,7 @@ var API_SECRET = '';
 
 /* Bump this on every page change — the number shows in the bottom-right corner so you can
    confirm a reload actually picked up the latest page (an old cached page has no tag). */
-var APP_VERSION = 'v110';
+var APP_VERSION = 'v111';
 
 /* Call a backend function: callApi('fn', [arg1, arg2]) -> Promise(result). */
 function callApi(fn, args){
@@ -2306,7 +2306,7 @@ function bppOptionsFor(dept, kind, it){
     if(it && it.bpp===undefined) return base;      // old worker, no column data yet → behave as before
     return lookupBpp>0 ? base : null;              // column live → only items marked with a value
   }
-  if(dept==='plastics' && /^lid/i.test(String((it&&it.type)||'').trim())){
+  if(dept==='plastics' && /^(lid|handle)/i.test(String((it&&it.type)||'').trim())){
     const base=[16,18,20,25];
     if(lookupBpp>0 && base.indexOf(lookupBpp)<0){ base.push(lookupBpp); base.sort((a,b)=>a-b); }
     return base;

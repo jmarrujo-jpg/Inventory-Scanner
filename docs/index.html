@@ -806,7 +806,7 @@ var API_SECRET = '';
 
 /* Bump this on every page change — the number shows in the bottom-right corner so you can
    confirm a reload actually picked up the latest page (an old cached page has no tag). */
-var APP_VERSION = 'v112';
+var APP_VERSION = 'v113';
 
 /* Call a backend function: callApi('fn', [arg1, arg2]) -> Promise(result). */
 function callApi(fn, args){
@@ -843,6 +843,10 @@ var rowSkips = {};   // per-location products the user marked "not here" in Coun
 /* Buildings for the Location box: pick a building, type just the number.
    Saved as LETTER-### (zero-padded to 3), e.g. Monarch + 3 -> "M-003", + 103 -> "M-103". */
 const BUILDINGS = [['M','Monarch'],['P','Plastics'],['MT','Metals'],['S','Shipping'],['H','Hitachi'],['W','Wyle']];
+// Physical building number for each area: Plastics/Metals/Shipping share Bldg 1; Hitachi 2; Wyle 3; Monarch 4.
+const BLDG_NUM = { P:1, MT:1, S:1, H:2, W:3, M:4 };
+// Option label like "P · Plastics (Bldg 1)".
+function bldgLabel(b){ const n = BLDG_NUM[b[0]]; return b[0]+' · '+b[1]+(n?' (Bldg '+n+')':''); }
 // Compose the location from the building select + number box (also accepts typing "m03"/"mt12").
 function composeLoc(){
   const sel = $('f_bldg') ? $('f_bldg').value : '';
@@ -864,7 +868,7 @@ function parseLoc(loc){
 function initBuildingSelect(){
   const sel=$('topBldg'); if(!sel) return;
   sel.innerHTML=['<option value="">— building —</option>'].concat(
-    BUILDINGS.map(b=>'<option value="'+b[0]+'">'+b[0]+' · '+b[1]+'</option>')
+    BUILDINGS.map(b=>'<option value="'+b[0]+'">'+bldgLabel(b)+'</option>')
   ).join('');
   sel.value=state.building||'';
 }
@@ -1859,7 +1863,7 @@ function composeRowLoc(){
 }
 function fillRowBuildings(){
   const sel=$('rowBldg'); if(!sel || sel.dataset.built) return; sel.dataset.built='1';
-  sel.innerHTML=['<option value="">—</option>'].concat(BUILDINGS.map(function(b){ return '<option value="'+b[0]+'">'+b[0]+' · '+b[1]+'</option>'; })).join('');
+  sel.innerHTML=['<option value="">—</option>'].concat(BUILDINGS.map(function(b){ return '<option value="'+b[0]+'">'+bldgLabel(b)+'</option>'; })).join('');
   sel.value=state.building||'';
 }
 function onRowBldg(v){ state.building=v; persistSession(); const tb=$('topBldg'); if(tb) tb.value=v; }
@@ -2349,7 +2353,7 @@ function selectItem(it, edit){
   const vBldg = locParts.bldg;   // editing shows the entry's building; a new scan uses the current one
   const vNum  = esc(locParts.num || '');
   const bldgOpts = ['<option value="">—</option>'].concat(
-    BUILDINGS.map(b=>'<option value="'+b[0]+'"'+(b[0]===vBldg?' selected':'')+'>'+b[0]+' · '+b[1]+'</option>')
+    BUILDINGS.map(b=>'<option value="'+b[0]+'"'+(b[0]===vBldg?' selected':'')+'>'+bldgLabel(b)+'</option>')
   ).join('');
   // `full` on an entry is the TOTAL full boxes. The pallet helper (plastics) lets a counter enter
   // pallets + boxes/pallet instead of multiplying it out; we store pallets (plt) and boxes/pallet
@@ -2742,7 +2746,7 @@ function buildLotCard(it){
   const codeLabel = isPlastic ? 'Item #' : (state.metalKind==='ends'?'Label Code':'Label Number');
   const vBldg=state.building, vNum=esc(state.locNum||'');
   const bldgOpts=['<option value="">—</option>'].concat(
-    BUILDINGS.map(b=>'<option value="'+b[0]+'"'+(b[0]===vBldg?' selected':'')+'>'+b[0]+' · '+b[1]+'</option>')
+    BUILDINGS.map(b=>'<option value="'+b[0]+'"'+(b[0]===vBldg?' selected':'')+'>'+bldgLabel(b)+'</option>')
   ).join('');
   const shiftFld = isPlastic
     ? `<div class="fld full"><label>Shift</label>

@@ -806,7 +806,7 @@ var API_SECRET = '';
 
 /* Bump this on every page change — the number shows in the bottom-right corner so you can
    confirm a reload actually picked up the latest page (an old cached page has no tag). */
-var APP_VERSION = 'v113';
+var APP_VERSION = 'v114';
 
 /* Call a backend function: callApi('fn', [arg1, arg2]) -> Promise(result). */
 function callApi(fn, args){
@@ -2540,6 +2540,12 @@ function kpOnBlur(){
     if(kbLock) return;                                       // locked open during count entry
     const a=document.activeElement;
     if(a && (kpIsField(a.id) || $('cardKeypad').contains(a))) return;
+    // Stray / near-miss tap on the background (not a real control) blurs the field but lands focus
+    // nowhere — activeElement falls back to <body> (or null). For the unlocked location boxes this
+    // used to close the pad mid-entry ("keyboard closes while I'm typing the row location"). Keep the
+    // pad up; activeNumField is unchanged, so the next key still appends to the right box.
+    if((!a || a===document.body) && (activeNumField==='rowNum' || activeNumField==='topLoc')
+       && $('cardKeypad').classList.contains('show')) return;
     kpHide();
   },0);
 }
